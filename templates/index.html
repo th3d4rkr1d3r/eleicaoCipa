@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eleição CIPA</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f8f9fa;
+        }
+        .card {
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 500px;
+        }
+        .alert {
+            margin-bottom: 20px;
+        }
+        .form-select, .form-control {
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card text-center">
+        <h3 class="mb-4">Vote para a CIPA</h3>
+        
+        <!-- Área de mensagens -->
+        <div class="w-100">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+
+        <form action="/votar" method="POST">
+            <div class="mb-3">
+                <input type="text" name="cpf" class="form-control" 
+                       placeholder="Digite seu CPF" required
+                       oninput="this.value = this.value.replace(/[^0-9]/g, '')"
+                       maxlength="11">
+                <small class="text-muted">Apenas números (11 dígitos)</small>
+            </div>
+            
+           <select name="filial" class="form-select" required>
+    <option value="">Escolha sua Filial</option>
+    <!-- Certifique-se que está usando id e nome nesta ordem -->
+    {% for id, nome in filiais %}
+    <option value="{{ id }}">{{ nome }}</option>
+    {% else %}
+    <option value="" disabled>Nenhuma filial disponível</option>
+    {% endfor %}
+</select>
+            
+            <<select name="candidato" class="form-select" required>
+    <option value="">Escolha um candidato</option>
+    <!-- Os candidatos serão preenchidos dinamicamente via JavaScript -->
+</select>
+            
+            <button type="submit" class="btn btn-success w-100 py-2">
+                Confirmar Voto
+            </button>
+        </form>
+
+        <!-- Link para resultados (visível apenas para testes) -->
+        <div class="mt-3">
+    <a href="/login?next=/resultados" class="btn btn-outline-secondary btn-sm">Acessar Resultados</a>
+</div>
+   <!-- Rodapé -->
+    <footer class="mt-5 text-center text-muted small">
+        <p>© GMO Facilities. Todos os direitos reservados.</p>
+    </footer>
+    <!-- Bootstrap JS para funcionamento dos alerts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Script para tocar som quando houver mensagem de sucesso -->
+    <script>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    {% if category == 'success' %}
+                        let audio = new Audio("{{ url_for('static', filename='urna.mp3') }}");
+                        audio.play().catch(e => console.log("Erro ao reproduzir som:", e));
+                    {% endif %}
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </script>
+	
+	<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const filialSelect = document.querySelector('select[name="filial"]');
+    const candidatoSelect = document.querySelector('select[name="candidato"]');
+    
+    // Dados dos candidatos (precarregados do template)
+    const candidatosData = [
+        {% for id, nome, filial_nome in candidatos %}
+        { id: "{{ id }}", nome: "{{ nome }}", filial: "{{ filial_nome }}" },
+        {% endfor %}
+    ];
+    
+    filialSelect.addEventListener('change', function() {
+        const filialId = this.value;
+        const filialNome = this.options[this.selectedIndex].text;
+        
+        // Limpar e adicionar opção padrão
+        candidatoSelect.innerHTML = '<option value="">Escolha um candidato</option>';
+        
+        if (filialId) {
+            // Filtrar candidatos pela filial selecionada
+            const candidatosFiltrados = candidatosData.filter(c => {
+                return c.filial === filialNome;
+            });
+            
+            // Adicionar candidatos filtrados ao select
+            candidatosFiltrados.forEach(c => {
+                const option = document.createElement('option');
+                option.value = c.id;
+                option.textContent = c.nome + ' (' + c.filial + ')';
+                candidatoSelect.appendChild(option);
+            });
+        }
+    });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+# Arquivos do Python
+__pycache__/
+*.pyc
+
+# Banco de dados e arquivos sensíveis
+instance/
+*.db
+.env
+
+# Arquivos de mídia
+*.mp3
+*.wav
+
+# Sistema/Sistema operacional
+.DS_Store
+Thumbs.db
