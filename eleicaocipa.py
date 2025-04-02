@@ -167,21 +167,19 @@ def index():
     conn = sqlite3.connect("eleicao_cipa.db")
     cursor = conn.cursor()
 
-    # Certifique-se que esta query está EXATAMENTE assim
+    # Alteração aqui - Adicione ORDER BY c.id
+    cursor.execute("""SELECT c.id, c.nome, f.nome 
+                   FROM candidatos c
+                   JOIN filiais f ON c.filial_id = f.id
+                   WHERE f.ativa = 1
+                   ORDER BY c.id""")  # Ordena por ID ao invés de nome
+
+    candidatos = cursor.fetchall()
+
     cursor.execute("SELECT id, nome FROM filiais WHERE ativa = 1 ORDER BY nome")
     filiais = cursor.fetchall()
 
-    cursor.execute('''SELECT c.id, c.nome, f.nome 
-                      FROM candidatos c
-                      JOIN filiais f ON c.filial_id = f.id
-                      WHERE f.ativa = 1
-                      ORDER BY f.nome, c.nome''')
-    candidatos = cursor.fetchall()
-
     conn.close()
-
-    # Adicione este print para debug (verá no terminal do Flask)
-    print("Filiais carregadas do banco:", filiais)
 
     return render_template("index.html",
                            filiais=filiais,
