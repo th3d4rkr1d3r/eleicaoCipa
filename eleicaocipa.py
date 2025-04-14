@@ -1,113 +1,200 @@
-from flask import Flask, render_template, request, redirect, flash, url_for
+from flask import Flask, render_template, request, redirect, flash, url_for, session, abort, send_file
+from flask_wtf.csrf import CSRFProtect
+from flask_bcrypt import Bcrypt
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+from functools import wraps
 import sqlite3
 import os
 import threading
 import hashlib
+import io
+import csv
 from playsound import playsound
-from functools import wraps
-from flask import session, redirect, url_for, abort
+from datetime import datetime, timedelta
+import logging
+from logging.handlers import RotatingFileHandler
+from config import Config
+from flask_wtf import FlaskForm
+from wtforms import StringField, PasswordField, SubmitField
+from wtforms.validators import DataRequired
+import pytz
+from datetime import datetime, timedelta
+from helpers import converter_para_brasil, formatar_data_brasil
+import logging
+import os
+import time
+from werkzeug.utils import secure_filename
 
+# Inicialização do aplicativo Flask
 app = Flask(__name__)
-app.secret_key = 'sua_chave_secreta_super_forte_aqui'
-
-# Credenciais de acesso (em produção, use um banco de dados com senhas criptografadas!)
-USUARIOS = {
-    "admin": "cipa2024",
-    "comissao": "eleicao123"
-}
-
-# Configuração das filiais
-FILIAIS = ["ITAJAI", "NAVEGANTES", "RECIFE", "VITORIA", "GOIANIA", "SAO JOSE DOS PINHAIS"]
+app.config.from_object(Config)
 
 
 
-def login_required(level="user"):
-    """Decorator para verificar se o usuário está logado e tem o nível necessário"""
+# Configurações de upload
+UPLOAD_FOLDER = os.path.join('static', 'uploads', 'candidatos')
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
-    def decorator(f):
-        @wraps(f)
-        def decorated_function(*args, **kwargs):
-            if 'user_id' not in session:
-                return redirect(url_for('login', next=request.url))
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # Cria a pasta se não existir
 
-            # Verifica o nível de acesso
-            conn = sqlite3.connect("eleicao_cipa.db")
-            cursor = conn.cursor()
-            cursor.execute("SELECT nivel FROM usuarios WHERE id = ?", (session['user_id'],))
-            user_level = cursor.fetchone()[0]
-            conn.close()
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-            # Hierarquia de níveis: admin > operador > user
-            access_levels = ["admin", "operador", "user"]
-            if access_levels.index(user_level) > access_levels.index(level):
-                abort(403)  # Acesso proibido
+# Configure o logger
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-            return f(*args, **kwargs)
+# Configuração do fuso horário
+TZ_BRASIL = pytz.timezone('America/Sao_Paulo')
 
-        return decorated_function
+def to_brasil_time(utc_dt):
+    """Converte datetime UTC para horário de Brasília"""
+    if utc_dt is None:
+        return None
+    if isinstance(utc_dt, str):
+        utc_dt = datetime.strptime(utc_dt, '%Y-%m-%d %H:%M:%S')
+    if utc_dt.tzinfo is None:
+        utc_dt = pytz.utc.localize(utc_dt)
+    return utc_dt.astimezone(TZ_BRASIL)
 
-    return decorator
+def format_brasil_datetime(dt):
+    """Formata datetime no padrão brasileiro"""
+    if dt is None:
+        return "N/A"
+    return dt.strftime('%d/%m/%Y %H:%M')
 
-def criar_banco():
-    conn = sqlite3.connect("eleicao_cipa.db")
-    cursor = conn.cursor()
 
-    cursor.execute('''CREATE TABLE IF NOT EXISTS filiais (
-                           id INTEGER PRIMARY KEY AUTOINCREMENT,
-                           nome TEXT UNIQUE,
-                           ativa BOOLEAN DEFAULT 1)''')
+# Extensões
+csrf = CSRFProtect(app)
+bcrypt = Bcrypt(app)
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"]
+)
+limiter.init_app(app)
 
-    # Atualizar a tabela se ela já existia
+
+# Configuração de logging
+handler = RotatingFileHandler('eleicao_cipa.log', maxBytes=10000, backupCount=3)
+handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+app.logger.addHandler(handler)
+
+# Login Form
+class LoginForm(FlaskForm):
+    username = StringField('Usuário', validators=[DataRequired()])
+    password = PasswordField('Senha', validators=[DataRequired()])
+    submit = SubmitField('Entrar')
+
+# Modelos
+class Usuario(db.Model):
+    __tablename__ = 'usuarios'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(120), nullable=False)
+    nivel = db.Column(db.String(20), nullable=False, default='user')
+    ativo = db.Column(db.Boolean, default=True)
+    ultimo_login = db.Column(db.DateTime)
+    tentativas_login = db.Column(db.Integer, default=0)
+    data_criacao = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+    def __repr__(self):
+        return f'<Usuario {self.username}>'
+
+class PasswordResetToken(db.Model):
+    __tablename__ = 'password_reset_tokens'
+    id = db.Column(db.Integer, primary_key=True)
+    token = db.Column(db.String(100), unique=True, nullable=False)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+    expiracao = db.Column(db.DateTime, nullable=False)
+    usado = db.Column(db.Boolean, default=False)
+    usuario = db.relationship('Usuario', backref='tokens_reset')
+
+class Filial(db.Model):
+    __tablename__ = 'filiais'
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(100), unique=True, nullable=False)
+    ativa = db.Column(db.Boolean, default=True)
+    data_criacao = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+    def __repr__(self):
+        return f'<Filial {self.nome}>'
+
+class Candidato(db.Model):
+    __tablename__ = 'candidatos'
+    id = db.Column(db.Integer, primary_key=True)  # ID global (mantido para relações)
+    filial_id_seq = db.Column(db.Integer, nullable=False, default=1)  # ID específico da filial
+    nome = db.Column(db.String(100), nullable=False)
+    filial_id = db.Column(db.Integer, db.ForeignKey('filiais.id'), nullable=False)
+    ativa = db.Column(db.Boolean, default=True)
+    foto = db.Column(db.String(255))  # Armazena o caminho da imagem
+    data_criacao = db.Column(db.DateTime, default=db.func.current_timestamp())
+    filial = db.relationship('Filial', backref='candidatos')
+
+    __table_args__ = (
+        db.UniqueConstraint('filial_id', 'filial_id_seq', name='_filial_id_seq_uc'),
+    )
+
+    def __repr__(self):
+        return f'<Candidato {self.nome} (Filial ID: {self.filial_id}, Seq: {self.filial_id_seq})>'
+
+    @classmethod
+    def proximo_id_filial(cls, filial_id):
+        """Retorna o próximo ID sequencial para a filial especificada"""
+        max_id = db.session.query(db.func.max(cls.filial_id_seq)).filter_by(filial_id=filial_id).scalar()
+        return 1 if max_id is None else max_id + 1
+
+class Voto(db.Model):
+    __tablename__ = 'votos'
+    id = db.Column(db.Integer, primary_key=True)
+    cpf = db.Column(db.String(11), nullable=False)
+    filial_id = db.Column(db.Integer, db.ForeignKey('filiais.id'), nullable=False)
+    candidato_id = db.Column(db.Integer, db.ForeignKey('candidatos.id'), nullable=False)
+    data_voto = db.Column(db.DateTime, default=db.func.current_timestamp())
+    filial = db.relationship('Filial', backref='votos')
+    candidato = db.relationship('Candidato', backref='votos')
+
+    def __repr__(self):
+        return f'<Voto {self.cpf}>'
+
+class Log(db.Model):
+    __tablename__ = 'logs'
+    id = db.Column(db.Integer, primary_key=True)
+    acao = db.Column(db.String(255), nullable=False)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
+    ip = db.Column(db.String(45))
+    user_agent = db.Column(db.String(255))
+    url = db.Column(db.String(255))
+    data = db.Column(db.DateTime, default=db.func.current_timestamp())
+    usuario = db.relationship('Usuario', backref='logs')
+
+    def __repr__(self):
+        return f'<Log {self.acao}>'
+
+# Funções auxiliares
+def registrar_log(acao, usuario_id=None):
     try:
-        cursor.execute("ALTER TABLE filiais ADD COLUMN ativa BOOLEAN DEFAULT 1")
-    except sqlite3.OperationalError:
-        pass  # Coluna já existe
-    try:
-        cursor.execute("ALTER TABLE candidatos ADD COLUMN ativa BOOLEAN DEFAULT 1")
-    except sqlite3.OperationalError:
-        pass  # Coluna já existe
-    # Tabela de candidatos
-    cursor.execute('''CREATE TABLE IF NOT EXISTS candidatos (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        nome TEXT,
-                        filial_id INTEGER,
-                        FOREIGN KEY (filial_id) REFERENCES filiais(id))''')
-
-    # Tabela de votos (já existente)
-    cursor.execute('''CREATE TABLE IF NOT EXISTS votos (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        cpf TEXT UNIQUE,
-                        filial_id INTEGER,
-                        candidato_id INTEGER,
-                        data_voto TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (filial_id) REFERENCES filiais(id),
-                        FOREIGN KEY (candidato_id) REFERENCES candidatos(id))''')
-
-    cursor.execute('''CREATE TABLE IF NOT EXISTS usuarios (
-                            id INTEGER PRIMARY KEY,
-                            username TEXT UNIQUE,
-                            password_hash TEXT,
-                            nivel TEXT)''')
-
-    # Cria usuário admin padrão se não existir
-    cursor.execute("SELECT COUNT(*) FROM usuarios WHERE username = 'admin'")
-    if cursor.fetchone()[0] == 0:
-        senha_hash = hashlib.sha256("admin123".encode()).hexdigest()
-        cursor.execute("INSERT INTO usuarios (username, password_hash, nivel) VALUES (?, ?, ?)",
-                       ("admin", senha_hash, "admin"))
-
-    cursor.execute('''CREATE TABLE IF NOT EXISTS logs (
-                          id INTEGER PRIMARY KEY AUTOINCREMENT,
-                          acao TEXT,
-                          usuario_id INTEGER,
-                          data TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-
-    conn.commit()
-    conn.close()
-
+        log = Log(
+            acao=acao,
+            usuario_id=usuario_id,
+            ip=request.remote_addr,
+            user_agent=request.headers.get('User-Agent', ''),
+            url=request.url
+        )
+        db.session.add(log)
+        db.session.commit()
+    except Exception as e:
+        app.logger.error(f"Erro ao registrar log: {str(e)}")
 
 def tocar_som():
-    """Reproduz o som da urna eletrônica"""
     try:
         caminho_som = os.path.join(app.static_folder, "urna.mp3")
         if os.path.exists(caminho_som):
@@ -115,78 +202,95 @@ def tocar_som():
     except Exception as e:
         app.logger.error(f"Erro ao reproduzir som: {str(e)}")
 
-
 def validar_cpf(cpf):
-    """Validação completa de CPF com mensagens específicas"""
     cpf = ''.join(filter(str.isdigit, cpf))
-
     if len(cpf) != 11:
         return (False, "CPF deve conter 11 dígitos")
-
     if all(d == cpf[0] for d in cpf):
         return (False, "CPF inválido (números repetidos)")
-
-    # Cálculo do primeiro dígito verificador
+    
     soma = sum(int(cpf[i]) * (10 - i) for i in range(9))
     digito1 = (soma * 10) % 11
     digito1 = digito1 if digito1 < 10 else 0
-
     if digito1 != int(cpf[9]):
         return (False, "CPF inválido (dígito verificador incorreto)")
-
-    # Cálculo do segundo dígito verificador
+    
     soma = sum(int(cpf[i]) * (11 - i) for i in range(10))
     digito2 = (soma * 10) % 11
     digito2 = digito2 if digito2 < 10 else 0
-
     if digito2 != int(cpf[10]):
         return (False, "CPF inválido (dígito verificador incorreto)")
-
+    
     return (True, "CPF válido")
 
+# Decorators
+def login_required(level="user"):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'user_id' not in session:
+                registrar_log("Tentativa de acesso não autenticada")
+                return redirect(url_for('login', next=request.url))
+            
+            usuario = Usuario.query.get(session['user_id'])
+            if not usuario or not usuario.ativo:
+                session.clear()
+                registrar_log("Tentativa de acesso com usuário inativo")
+                flash("Sua conta está desativada", "danger")
+                return redirect(url_for('login'))
+            
+            access_levels = ["admin", "operador", "user"]
+            if access_levels.index(usuario.nivel) > access_levels.index(level):
+                registrar_log(f"Tentativa de acesso não autorizado - Nível necessário: {level}", usuario.id)
+                abort(403)
+            
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
 
-# Sistema de autenticação básica
-def requer_autenticacao(f):
-    @wraps(f)
-    def decorador(*args, **kwargs):
-        auth = request.authorization
-        if not auth or not (auth.username in USUARIOS and USUARIOS[auth.username] == auth.password):
-            return (
-                '<h1>Acesso não autorizado</h1>'
-                '<p>Você precisa de credenciais válidas para acessar os resultados</p>',
-                401,
-                {'WWW-Authenticate': 'Basic realm="Resultados CIPA"'}
-            )
-        return f(*args, **kwargs)
-
-    return decorador
-
-
-@app.route("/")
+# Rotas
+@app.route('/')
 def index():
-    conn = sqlite3.connect("eleicao_cipa.db")
-    cursor = conn.cursor()
+    try:
+        # Consulta para filiais ativas
+        filiais = db.session.query(
+            Filial.id,
+            Filial.nome
+        ).filter_by(ativa=True).order_by(Filial.nome).all()
 
-    # Alteração aqui - Adicione ORDER BY c.id
-    cursor.execute("""SELECT c.id, c.nome, f.nome 
-                   FROM candidatos c
-                   JOIN filiais f ON c.filial_id = f.id
-                   WHERE f.ativa = 1
-                   ORDER BY c.id""")  # Ordena por ID ao invés de nome
+        # Consulta para candidatos ativos com suas filiais (também ativas)
+        candidatos = db.session.query(
+            Candidato.id,
+            Candidato.nome,
+            Filial.nome.label('filial_nome'),
+            Candidato.foto,
+            Candidato.filial_id_seq,
+            Filial.id.label('filial_id')  # Adicionando o ID da filial para referência
+        ).join(Filial).filter(
+            Candidato.ativa == True,
+            Filial.ativa == True
+        ).order_by(Filial.nome, Candidato.filial_id_seq).all()
 
-    candidatos = cursor.fetchall()
+        # Log para debug (remova depois de testar)
+        app.logger.info(f"Filiais carregadas: {len(filiais)}")
+        app.logger.info(f"Candidatos carregados: {len(candidatos)}")
+        for filial in filiais:
+            app.logger.info(f"Filial: {filial.nome} (ID: {filial.id})")
+        for cand in candidatos:
+            app.logger.info(f"Candidato: {cand.nome} - Filial: {cand.filial_nome} (ID Filial: {cand.filial_id})")
 
-    cursor.execute("SELECT id, nome FROM filiais WHERE ativa = 1 ORDER BY nome")
-    filiais = cursor.fetchall()
+        return render_template("index.html",
+                            filiais=filiais,
+                            candidatos=candidatos)
 
-    conn.close()
+    except Exception as e:
+        app.logger.error(f"Erro na página inicial: {str(e)}", exc_info=True)
+        flash("Erro ao carregar a página de votação", "danger")
+        # Retorna listas vazias para evitar erros no template
+        return render_template("index.html", filiais=[], candidatos=[])
 
-    return render_template("index.html",
-                           filiais=filiais,
-                           candidatos=candidatos)
-
-
-@app.route("/votar", methods=["POST"])
+@app.route('/votar', methods=['POST'])
+@csrf.exempt  # Isenta CSRF para esta rota específica se necessário
 def votar():
     cpf = request.form["cpf"].strip()
     filial_id = request.form["filial"].strip()
@@ -201,114 +305,126 @@ def votar():
         flash(f"Erro: {mensagem}", "danger")
         return redirect(url_for("index"))
 
-    conn = sqlite3.connect("eleicao_cipa.db")
-    cursor = conn.cursor()
-
     try:
-        cursor.execute("SELECT COUNT(*) FROM votos WHERE cpf = ?", (cpf,))
-        if cursor.fetchone()[0] > 0:
+        if Voto.query.filter_by(cpf=cpf).first():
             flash("Este CPF já votou! Cada pessoa pode votar apenas uma vez.", "warning")
             return redirect(url_for("index"))
 
-        cursor.execute(
-            "INSERT INTO votos (cpf, filial_id, candidato_id) VALUES (?, ?, ?)",
-            (cpf, filial_id, candidato_id)  # Corrigido aqui
+        novo_voto = Voto(
+            cpf=cpf,
+            filial_id=filial_id,
+            candidato_id=candidato_id
         )
-        conn.commit()
+        db.session.add(novo_voto)
+        db.session.commit()
+
+        registrar_log("Voto registrado", session.get('user_id'))
         flash("Voto registrado com sucesso!", "success")
         tocar_som()
-
-    except sqlite3.Error as e:
+    except Exception as e:
+        db.session.rollback()
+        registrar_log(f"Erro ao registrar voto: {str(e)}")
         flash(f"Erro ao registrar voto: {str(e)}", "danger")
-    finally:
-        conn.close()
 
     return redirect(url_for("index"))
 
 
-@app.route("/resultados")
+@app.route('/resultados')
 @login_required(level="user")
 def resultados():
+    def converter_para_brasil(dt):
+        """Converte datetime UTC para horário de Brasília"""
+        if dt is None:
+            return None
+        if isinstance(dt, str):
+            dt = datetime.strptime(dt, '%Y-%m-%d %H:%M:%S')
+        if dt.tzinfo is None:
+            dt = pytz.utc.localize(dt)
+        return dt.astimezone(pytz.timezone('America/Sao_Paulo'))
+
+    def formatar_data_brasil(dt):
+        """Formata datetime no padrão brasileiro"""
+        if dt is None:
+            return "N/A"
+        return dt.strftime('%d/%m/%Y %H:%M')
+
     filial_filtro = request.args.get('filial', 'Todas Filiais')
     data_inicio = request.args.get('data_inicio')
     data_fim = request.args.get('data_fim')
 
-    conn = sqlite3.connect("eleicao_cipa.db")
-    cursor = conn.cursor()
+    # Query principal incluindo a foto do candidato
+    query = db.session.query(
+        Candidato.nome,
+        Candidato.foto,  # Adicionado a foto aqui
+        db.func.count(Voto.id).label('votos'),
+        db.func.max(Voto.data_voto).label('ultimo_voto')
+    ).join(Voto, Voto.candidato_id == Candidato.id
+          ).join(Filial, Voto.filial_id == Filial.id)
 
-    # Query para resultados
-    query = """SELECT c.nome, COUNT(*) as votos, 
-               strftime('%d/%m/%Y %H:%M', datetime(v.data_voto, 'localtime')) as data_formatada
-               FROM votos v
-               JOIN candidatos c ON v.candidato_id = c.id
-               JOIN filiais f ON v.filial_id = f.id
-               WHERE 1=1"""
-    params = []
-
+    # Aplicar filtros
     if filial_filtro != 'Todas Filiais':
-        query += " AND f.nome = ?"
-        params.append(filial_filtro)
-
+        query = query.filter(Filial.nome == filial_filtro)
     if data_inicio:
-        query += " AND date(v.data_voto) >= ?"
-        params.append(data_inicio)
-
+        query = query.filter(db.func.date(Voto.data_voto) >= data_inicio)
     if data_fim:
-        query += " AND date(v.data_voto) <= ?"
-        params.append(data_fim)
+        query = query.filter(db.func.date(Voto.data_voto) <= data_fim)
 
-    query += " GROUP BY c.nome ORDER BY votos DESC"
-    cursor.execute(query, params)
-    resultados = cursor.fetchall()
+    resultados_raw = query.group_by(Candidato.nome, Candidato.foto).order_by(db.desc('votos')).all()
+
+    # Processar resultados incluindo a foto
+    resultados = []
+    for nome, foto, votos, ultimo_voto in resultados_raw:
+        dt_brasil = converter_para_brasil(ultimo_voto)
+        resultados.append((
+            nome,
+            votos,
+            formatar_data_brasil(dt_brasil),
+            foto  # Incluindo a foto na tupla
+        ))
 
     # Query para detalhes dos votos
-    detalhes_query = """SELECT v.cpf, f.nome, c.nome, 
-                       strftime('%d/%m/%Y %H:%M', datetime(v.data_voto, 'localtime')) as data_formatada
-                       FROM votos v
-                       JOIN candidatos c ON v.candidato_id = c.id
-                       JOIN filiais f ON v.filial_id = f.id
-                       WHERE 1=1"""
-    detalhes_params = []
+    detalhes_query = db.session.query(
+        Voto.cpf,
+        Filial.nome,
+        Candidato.nome,
+        Voto.data_voto
+    ).join(Candidato, Voto.candidato_id == Candidato.id
+          ).join(Filial, Voto.filial_id == Filial.id)
 
+    # Aplicar os mesmos filtros
     if filial_filtro != 'Todas Filiais':
-        detalhes_query += " AND f.nome = ?"
-        detalhes_params.append(filial_filtro)
-
+        detalhes_query = detalhes_query.filter(Filial.nome == filial_filtro)
     if data_inicio:
-        detalhes_query += " AND date(v.data_voto) >= ?"
-        detalhes_params.append(data_inicio)
-
+        detalhes_query = detalhes_query.filter(db.func.date(Voto.data_voto) >= data_inicio)
     if data_fim:
-        detalhes_query += " AND date(v.data_voto) <= ?"
-        detalhes_params.append(data_fim)
+        detalhes_query = detalhes_query.filter(db.func.date(Voto.data_voto) <= data_fim)
 
-    cursor.execute(detalhes_query, detalhes_params)
-    detalhes_votos = cursor.fetchall()
+    detalhes_raw = detalhes_query.order_by(Voto.data_voto.desc()).all()
 
-    # Query para total de votos (COM FILTRO)
-    total_query = "SELECT COUNT(*) FROM votos v JOIN filiais f ON v.filial_id = f.id WHERE 1=1"
-    total_params = []
+    # Processar detalhes dos votos
+    detalhes_votos = []
+    for cpf, filial, candidato, data_voto in detalhes_raw:
+        dt_brasil = converter_para_brasil(data_voto)
+        detalhes_votos.append((
+            cpf[:3] + '.***.***-**',  # Mascarar CPF
+            filial,
+            candidato,
+            formatar_data_brasil(dt_brasil)
+        ))
 
+    # Calcular total de votos
+    total_query = db.session.query(db.func.count(Voto.id))
     if filial_filtro != 'Todas Filiais':
-        total_query += " AND f.nome = ?"
-        total_params.append(filial_filtro)
-
+        total_query = total_query.join(Filial, Voto.filial_id == Filial.id).filter(Filial.nome == filial_filtro)
     if data_inicio:
-        total_query += " AND date(v.data_voto) >= ?"
-        total_params.append(data_inicio)
-
+        total_query = total_query.filter(db.func.date(Voto.data_voto) >= data_inicio)
     if data_fim:
-        total_query += " AND date(v.data_voto) <= ?"
-        total_params.append(data_fim)
+        total_query = total_query.filter(db.func.date(Voto.data_voto) <= data_fim)
 
-    cursor.execute(total_query, total_params)
-    total_votos = cursor.fetchone()[0] or 0
+    total_votos = total_query.scalar() or 0
 
     # Obter lista de filiais para o dropdown
-    cursor.execute("SELECT nome FROM filiais")
-    filiais = [f[0] for f in cursor.fetchall()]
-
-    conn.close()
+    filiais = [f[0] for f in db.session.query(Filial.nome).all()]
 
     return render_template(
         "resultados.html",
@@ -321,337 +437,487 @@ def resultados():
         data_fim=data_fim or ''
     )
 
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+    form = LoginForm()
 
-        conn = sqlite3.connect("eleicao_cipa.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, nivel FROM usuarios WHERE username = ? AND password_hash = ?",
-                       (username, hashlib.sha256(password.encode()).hexdigest()))
-        user = cursor.fetchone()
-        conn.close()
+    if form.validate_on_submit():
+        username = form.username.data
+        password = form.password.data
 
-        if user:
-            session['user_id'] = user[0]
-            session['user_level'] = user[1]
-            flash("Login realizado com sucesso!", "success")
+        usuario = Usuario.query.filter_by(username=username).first()
 
-            # Redireciona para a URL original ou para o admin
-            next_url = request.args.get('next', url_for('admin'))
-            return redirect(next_url)
-        else:
-            flash("Usuário ou senha incorretos", "danger")
+        if usuario and bcrypt.check_password_hash(usuario.password_hash, password):
+            session['user_id'] = usuario.id
+            session['user_level'] = usuario.nivel
+            registrar_log("Login realizado", usuario.id)
+            flash('Login realizado com sucesso!', 'success')
 
-    return render_template('login.html')
+            next_page = request.args.get('next')
+            return redirect(next_page or url_for('admin'))
+
+        flash('Usuário ou senha inválidos.', 'danger')
+
+    return render_template('login.html', form=form)
 
 @app.route('/logout')
 def logout():
+    if 'user_id' in session:
+        registrar_log("Logout realizado", session['user_id'])
     session.clear()
     flash("Você foi desconectado com sucesso.", "info")
     return redirect(url_for('login'))
 
-
 @app.route("/admin")
 @login_required(level="admin")
 def admin():
-    conn = sqlite3.connect("eleicao_cipa.db")
-    cursor = conn.cursor()
+    try:
+        # Estatísticas totais
+        total_filiais = Filial.query.count()
+        total_candidatos = Candidato.query.filter_by(ativa=True).count()
+        total_votos = Voto.query.count()
 
-    # Obter estatísticas básicas
-    cursor.execute("SELECT COUNT(*) FROM filiais")
-    total_filiais = cursor.fetchone()[0] or 0
+        # Query para filiais (id, nome, status)
+        filiais = db.session.query(
+            Filial.id,
+            Filial.nome,
+            Filial.ativa
+        ).order_by(Filial.nome).all()
 
-    cursor.execute("SELECT COUNT(*) FROM candidatos WHERE ativa = 1")  # Só conta candidatos ativos
-    total_candidatos = cursor.fetchone()[0] or 0
+        # Query para candidatos (id, nome, filial, status)
+        candidatos = db.session.query(
+            Candidato.id,
+            Candidato.nome,
+            Filial.nome.label('filial_nome'),
+            Candidato.ativa
+        ).join(Filial, Candidato.filial_id == Filial.id
+        ).order_by(Filial.nome, Candidato.nome).all()
 
-    cursor.execute("SELECT COUNT(*) FROM votos")
-    total_votos = cursor.fetchone()[0] or 0
+        # Registrar acesso ao painel
+        registrar_log("Acessou painel administrativo", session['user_id'])
 
-    # Obter lista de filiais para exibir (com status)
-    cursor.execute("SELECT id, nome, ativa FROM filiais ORDER BY nome")
-    filiais = cursor.fetchall()
+        return render_template(
+            "admin.html",
+            total_filiais=total_filiais,
+            total_candidatos=total_candidatos,
+            total_votos=total_votos,
+            filiais=filiais,
+            candidatos=candidatos
+        )
 
-    # Obter lista de candidatos para exibir (com status e nome da filial)
-    cursor.execute('''SELECT c.id, c.nome, f.nome, c.ativa
-                      FROM candidatos c
-                      JOIN filiais f ON c.filial_id = f.id
-                      ORDER BY f.nome, c.nome''')
-    candidatos = cursor.fetchall()
+    except Exception as e:
+        app.logger.error(f"Erro no painel admin: {str(e)}")
+        registrar_log(f"Erro no painel admin: {str(e)}", session.get('user_id'))
+        flash("Ocorreu um erro ao carregar o painel administrativo", "danger")
+        return redirect(url_for('index'))
 
-    conn.close()
-
-    return render_template("admin.html",
-                         total_filiais=total_filiais,
-                         total_candidatos=total_candidatos,
-                         total_votos=total_votos,
-                         filiais=filiais,
-                         candidatos=candidatos)
-
-
-# Exemplo de como implementar logs (adicione na rota resetar_votos)
 @app.route("/admin/resetar_votos", methods=['POST'])
 @login_required(level="admin")
 def resetar_votos():
-    conn = sqlite3.connect("eleicao_cipa.db")
-    cursor = conn.cursor()
-
-    try:
-        # Obter nome do usuário atual para o log
-        cursor.execute("SELECT username FROM usuarios WHERE id = ?", (session['user_id'],))
-        username = cursor.fetchone()[0]
-
-        # Registrar log com hora local
-        from datetime import datetime
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        cursor.execute("INSERT INTO logs (acao, usuario_id, data) VALUES (?, ?, ?)",
-                       (f"Reset de votos realizado por {username}", session['user_id'], now))
-
-        # Resetar votos
-        cursor.execute("DELETE FROM votos")
-        conn.commit()
-        flash("Todos os votos foram resetados com sucesso!", "success")
-    except sqlite3.Error as e:
-        conn.rollback()
-        flash(f"Erro ao resetar votos: {str(e)}", "danger")
-    finally:
-        conn.close()
-
-    return redirect(url_for('admin'))
-
+    if request.method == 'POST':
+        try:
+            # Verificação CSRF correta (usando o método verificado do Flask-WTF)
+            csrf.protect()  # Isso valida automaticamente o token CSRF
+            
+            usuario = Usuario.query.get(session['user_id'])
+            registrar_log("Iniciou reset de votos", usuario.id)
+            
+            # Resetar votos
+            num_votos = db.session.query(Voto).count()
+            db.session.query(Voto).delete()
+            db.session.commit()
+            
+            registrar_log(f"Reset de votos concluído - {num_votos} votos removidos", usuario.id)
+            flash(f"Todos os {num_votos} votos foram resetados com sucesso!", "success")
+        except Exception as e:
+            db.session.rollback()
+            registrar_log(f"Falha ao resetar votos: {str(e)}", session.get('user_id'))
+            flash(f"Erro ao resetar votos: {str(e)}", "danger")
+        
+        return redirect(url_for('admin'))
 @app.route("/admin/filiais", methods=['GET', 'POST'])
 @login_required(level="admin")
 def gerenciar_filiais():
-    conn = sqlite3.connect("eleicao_cipa.db")
-    cursor = conn.cursor()
-
-    # Verifica se a coluna data_criacao existe, se não, cria
-    try:
-        cursor.execute("ALTER TABLE filiais ADD COLUMN data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass  # Coluna já existe
+    # Configuração da paginação
+    page = request.args.get('page', 1, type=int)
+    per_page = 10  # Número de itens por página
 
     if request.method == 'POST':
-        # Adicionar nova filial
         if 'nome_filial' in request.form:
             nome = request.form['nome_filial'].strip().upper()
             try:
-                cursor.execute(
-                    "INSERT INTO filiais (nome, ativa, data_criacao) VALUES (?, 1, CURRENT_TIMESTAMP)",
-                    (nome,)
-                )
-                conn.commit()
+                filial = Filial(nome=nome)
+                db.session.add(filial)
+                db.session.commit()
+                registrar_log(f"Filial {nome} adicionada", session['user_id'])
                 flash(f"Filial {nome} adicionada com sucesso!", "success")
-            except sqlite3.IntegrityError:
-                flash("Esta filial já existe!", "danger")
-            return redirect(url_for('gerenciar_filiais'))
-
-        # Toggle status da filial
+                return redirect(url_for('gerenciar_filiais', page=page))
+            except Exception as e:
+                db.session.rollback()
+                registrar_log(f"Erro ao adicionar filial: {str(e)}", session['user_id'])
+                flash("Esta filial já existe ou houve um erro!", "danger")
+        
         elif 'toggle_filial' in request.form:
             filial_id = request.form['toggle_filial']
-            cursor.execute("UPDATE filiais SET ativa = NOT ativa WHERE id = ?", (filial_id,))
-            conn.commit()
-            flash("Status da filial atualizado com sucesso!", "success")
-            return redirect(url_for('gerenciar_filiais'))
-
-        # Excluir filial
+            filial = Filial.query.get(filial_id)
+            if filial:
+                filial.ativa = not filial.ativa
+                db.session.commit()
+                registrar_log(f"Status da filial {filial.nome} alterado para {'Ativa' if filial.ativa else 'Inativa'}", session['user_id'])
+                flash("Status da filial atualizado com sucesso!", "success")
+                return redirect(url_for('gerenciar_filiais', page=page))
+        
         elif 'excluir_filial' in request.form:
             filial_id = request.form['excluir_filial']
-            try:
-                cursor.execute("DELETE FROM filiais WHERE id = ?", (filial_id,))
-                conn.commit()
-                flash("Filial excluída com sucesso!", "success")
-            except sqlite3.IntegrityError as e:
-                flash("Não é possível excluir - filial possui candidatos associados!", "danger")
-            return redirect(url_for('gerenciar_filiais'))
+            filial = Filial.query.get(filial_id)
+            if filial:
+                try:
+                    db.session.delete(filial)
+                    db.session.commit()
+                    registrar_log(f"Filial {filial.nome} excluída", session['user_id'])
+                    flash("Filial excluída com sucesso!", "success")
+                    return redirect(url_for('gerenciar_filiais', page=page))
+                except Exception as e:
+                    db.session.rollback()
+                    registrar_log(f"Erro ao excluir filial: {str(e)}", session['user_id'])
+                    flash("Não é possível excluir - filial possui candidatos ou votos associados!", "danger")
+        
+        return redirect(url_for('gerenciar_filiais', page=page))
 
-    # Consulta atualizada para incluir data_criacao
-    cursor.execute("""
-        SELECT id, nome, ativa, 
-               strftime('%d/%m/%Y %H:%M', datetime(data_criacao, 'localtime')) 
-        FROM filiais 
-        ORDER BY nome
-    """)
-    filiais = cursor.fetchall()
+    # Query para filiais com paginação
+    query = db.session.query(
+        Filial.id,
+        Filial.nome,
+        Filial.ativa,
+        db.func.strftime('%d/%m/%Y %H:%M', Filial.data_criacao).label('data_criacao')
+    ).order_by(Filial.nome)
 
-    conn.close()
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    filiais = pagination.items
+
+    total_ativas = sum(1 for f in filiais if f[2])  # Índice 2 = ativa
+    total_inativas = sum(1 for f in filiais if not f[2])
 
     return render_template("admin_filiais.html",
-                           filiais=filiais,
-                           total_ativas=sum(1 for f in filiais if f[2]),
-                           total_inativas=sum(1 for f in filiais if not f[2]))
+                         filiais=filiais,
+                         total_ativas=total_ativas,
+                         total_inativas=total_inativas,
+                         pagination=pagination)
 
 
 @app.route("/admin/candidatos", methods=['GET', 'POST'])
 @login_required(level="admin")
 def gerenciar_candidatos():
-    conn = None
-    try:
-        conn = sqlite3.connect("eleicao_cipa.db")
-        cursor = conn.cursor()
+    # Configuração da paginação
+    page = request.args.get('page', 1, type=int)
+    per_page = 10
 
-        # 1. GARANTIR ESTRUTURA DO BANCO DE DADOS
-        # Verifica e cria colunas ausentes com tratamento de erro
-        columns_to_add = [
-            ("ativa", "BOOLEAN DEFAULT 1"),
-            ("data_criacao", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-        ]
+    if request.method == 'POST':
+        if 'nome_candidato' in request.form:
+            nome = request.form['nome_candidato'].strip()
+            filial_id = request.form['filial_candidato']
+            foto = None
+            
+            # Obter o próximo ID sequencial para a filial
+            max_id = db.session.query(db.func.max(Candidato.filial_id_seq))\
+                      .filter_by(filial_id=filial_id)\
+                      .scalar() or 0  # Retorna 0 se não houver candidatos
+            novo_id = max_id + 1
 
-        for column, definition in columns_to_add:
+            # Processar upload de foto
+            if 'foto_candidato' in request.files:
+                file = request.files['foto_candidato']
+                if file and allowed_file(file.filename):
+                    try:
+                        if file.content_length > 2 * 1024 * 1024:
+                            flash("Arquivo muito grande (tamanho máximo: 2MB)", "danger")
+                            return redirect(url_for('gerenciar_candidatos'))
+                        
+                        ext = file.filename.rsplit('.', 1)[1].lower()
+                        filename = f"cand_{filial_id}_{novo_id}.{ext}"
+                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                        
+                        file.save(filepath)
+                        foto = filename
+                        
+                    except Exception as upload_error:
+                        app.logger.error(f"Erro no upload: {str(upload_error)}")
+                        flash("Erro ao processar a imagem do candidato", "danger")
+                        return redirect(url_for('gerenciar_candidatos'))
+                
+                elif file.filename != '':
+                    flash("Formato de arquivo não permitido (use JPG, PNG)", "danger")
+                    return redirect(url_for('gerenciar_candidatos'))
+
             try:
-                cursor.execute(f"ALTER TABLE candidatos ADD COLUMN {column} {definition}")
-                conn.commit()
-            except sqlite3.OperationalError:
-                pass  # Coluna já existe
-
-        # 2. PROCESSAR FORMULÁRIOS (POST)
-        if request.method == 'POST':
-            # Adicionar novo candidato
-            if 'nome_candidato' in request.form:
-                nome = request.form['nome_candidato'].strip()
-                filial_id = request.form['filial_candidato']
-
-                try:
-                    cursor.execute(
-                        "INSERT INTO candidatos (nome, filial_id, ativa) VALUES (?, ?, 1)",
-                        (nome, filial_id)
-                    )
-                    conn.commit()
-                    flash(f"Candidato {nome} adicionado com sucesso!", "success")
-                except sqlite3.IntegrityError as e:
-                    flash(f"Erro ao adicionar candidato: {str(e)}", "danger")
-
+                candidato = Candidato(
+                    nome=nome,
+                    filial_id=filial_id,
+                    filial_id_seq=novo_id,
+                    foto=foto
+                )
+                db.session.add(candidato)
+                db.session.commit()
+                
+                registrar_log(f"Candidato {nome} adicionado (ID Filial: {novo_id})", session['user_id'])
+                flash(f"Candidato {nome} cadastrado com sucesso! (ID: {novo_id})", "success")
+                return redirect(url_for('gerenciar_candidatos'))
+                
+            except Exception as e:
+                db.session.rollback()
+                if foto and os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], foto)):
+                    os.remove(os.path.join(app.config['UPLOAD_FOLDER'], foto))
+                
+                registrar_log(f"Erro ao adicionar candidato: {str(e)}", session['user_id'])
+                flash(f"Erro ao cadastrar candidato: {str(e)}", "danger")
                 return redirect(url_for('gerenciar_candidatos'))
 
-            # Alternar status do candidato
-            elif 'toggle_candidato' in request.form:
-                candidato_id = request.form['toggle_candidato']
-                try:
-                    cursor.execute(
-                        "UPDATE candidatos SET ativa = NOT ativa WHERE id = ?",
-                        (candidato_id,)
-                    )
-                    conn.commit()
-                    flash("Status do candidato atualizado com sucesso!", "success")
-                except sqlite3.Error as e:
-                    flash(f"Erro ao atualizar status: {str(e)}", "danger")
-
+        elif 'toggle_candidato' in request.form:
+            candidato_id = request.form['toggle_candidato']
+            candidato = Candidato.query.get(candidato_id)
+            if candidato:
+                candidato.ativa = not candidato.ativa
+                db.session.commit()
+                registrar_log(
+                    f"Status do candidato {candidato.nome} (ID Filial: {candidato.filial_id_seq}) alterado para {'Ativo' if candidato.ativa else 'Inativo'}",
+                    session['user_id'])
+                flash("Status do candidato atualizado com sucesso!", "success")
                 return redirect(url_for('gerenciar_candidatos'))
 
-            # Excluir candidato
-            elif 'excluir_candidato' in request.form:
-                candidato_id = request.form['excluir_candidato']
+        elif 'excluir_candidato' in request.form:
+            candidato_id = request.form['excluir_candidato']
+            candidato = Candidato.query.get(candidato_id)
+            if candidato:
                 try:
-                    # Verifica se o candidato tem votos associados
-                    cursor.execute(
-                        "SELECT COUNT(*) FROM votos WHERE candidato_id = ?",
-                        (candidato_id,)
-                    )
-                    if cursor.fetchone()[0] > 0:
+                    if Voto.query.filter_by(candidato_id=candidato.id).count() > 0:
                         flash("Não é possível excluir - candidato possui votos associados!", "warning")
                     else:
-                        cursor.execute(
-                            "DELETE FROM candidatos WHERE id = ?",
-                            (candidato_id,)
-                        )
-                        conn.commit()
+                        if candidato.foto and os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], candidato.foto)):
+                            os.remove(os.path.join(app.config['UPLOAD_FOLDER'], candidato.foto))
+                        
+                        db.session.delete(candidato)
+                        db.session.commit()
+                        registrar_log(f"Candidato {candidato.nome} (ID Filial: {candidato.filial_id_seq}) excluído", session['user_id'])
                         flash("Candidato excluído com sucesso!", "success")
-                except sqlite3.Error as e:
+                    return redirect(url_for('gerenciar_candidatos'))
+                except Exception as e:
+                    db.session.rollback()
+                    registrar_log(f"Erro ao excluir candidato: {str(e)}", session['user_id'])
                     flash(f"Erro ao excluir candidato: {str(e)}", "danger")
+                    return redirect(url_for('gerenciar_candidatos'))
 
-                return redirect(url_for('gerenciar_candidatos'))
+        elif 'editar_candidato' in request.form:
+            candidato_id = request.form['editar_candidato']
+            candidato = Candidato.query.get(candidato_id)
+            
+            if candidato:
+                try:
+                    candidato.nome = request.form.get('editar_nome', candidato.nome)
+                    novo_filial_id = request.form.get('editar_filial', candidato.filial_id)
+                    
+                    # Se mudou de filial, reatribuir o ID sequencial
+                    if novo_filial_id != candidato.filial_id:
+                        max_id = db.session.query(db.func.max(Candidato.filial_id_seq))\
+                                  .filter_by(filial_id=novo_filial_id)\
+                                  .scalar() or 0
+                        candidato.filial_id_seq = max_id + 1
+                        candidato.filial_id = novo_filial_id
+                    
+                    if 'remover_foto' in request.form:
+                        if candidato.foto and os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], candidato.foto)):
+                            os.remove(os.path.join(app.config['UPLOAD_FOLDER'], candidato.foto))
+                        candidato.foto = None
+                    
+                    if 'nova_foto' in request.files:
+                        file = request.files['nova_foto']
+                        if file and allowed_file(file.filename):
+                            if candidato.foto and os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], candidato.foto)):
+                                os.remove(os.path.join(app.config['UPLOAD_FOLDER'], candidato.foto))
+                            
+                            filename = secure_filename(f"cand_{candidato.filial_id}_{candidato.filial_id_seq}.{file.filename.rsplit('.', 1)[1].lower()}")
+                            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                            candidato.foto = filename
+                    
+                    db.session.commit()
+                    registrar_log(f"Candidato {candidato.nome} (ID Filial: {candidato.filial_id_seq}) atualizado", session['user_id'])
+                    flash("Candidato atualizado com sucesso!", "success")
+                    return redirect(url_for('gerenciar_candidatos'))
+                
+                except Exception as e:
+                    db.session.rollback()
+                    registrar_log(f"Erro ao atualizar candidato: {str(e)}", session['user_id'])
+                    flash(f"Erro ao atualizar candidato: {str(e)}", "danger")
+                    return redirect(url_for('gerenciar_candidatos'))
 
-        # 3. CONSULTA SEGURA DOS DADOS
-        # Consulta principal com tratamento para coluna data_criacao
-        cursor.execute("""
-            SELECT 
-                c.id, 
-                c.nome, 
-                f.nome AS filial, 
-                c.ativa,
-                COALESCE(
-                    strftime('%d/%m/%Y %H:%M', datetime(c.data_criacao, 'localtime')),
-                    'N/A'
-                ) AS data_formatada
-            FROM 
-                candidatos c
-            JOIN 
-                filiais f ON c.filial_id = f.id
-            ORDER BY 
-                f.nome, c.nome
-        """)
-        candidatos = cursor.fetchall()
+    # Query para candidatos com paginação (incluindo filial_id_seq)
+    query = db.session.query(
+        Candidato.id,
+        Candidato.nome,
+        Filial.nome.label('filial'),
+        Candidato.ativa,
+        Candidato.foto,
+        Candidato.filial_id_seq,
+        Filial.id.label('filial_id'),
+        db.func.strftime('%d/%m/%Y %H:%M', Candidato.data_criacao).label('data_formatada')
+    ).join(Filial).order_by(Filial.nome, Candidato.filial_id_seq)
 
-        # Filiais ativas para dropdown
-        cursor.execute("""
-            SELECT id, nome 
-            FROM filiais 
-            WHERE ativa = 1 
-            ORDER BY nome
-        """)
-        filiais = cursor.fetchall()
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    candidatos = pagination.items
 
-        # Estatísticas
-        total_ativas = sum(1 for c in candidatos if c[3])  # índice 3 = ativa
-        total_inativas = sum(1 for c in candidatos if not c[3])
+    filiais = Filial.query.filter_by(ativa=True).order_by(Filial.nome).all()
+    total_ativas = sum(1 for c in candidatos if c[3])  # Índice 3 = ativa
+    total_inativas = sum(1 for c in candidatos if not c[3])
 
-    except sqlite3.Error as e:
-        flash(f"Erro no banco de dados: {str(e)}", "danger")
-        candidatos = []
-        filiais = []
-        total_ativas = 0
-        total_inativas = 0
-    finally:
-        if conn:
-            conn.close()
-
-    # 4. RENDERIZAÇÃO DO TEMPLATE
     return render_template(
         "admin_candidatos.html",
         candidatos=candidatos,
         filiais=filiais,
         total_ativas=total_ativas,
-        total_inativas=total_inativas
+        total_inativas=total_inativas,
+        pagination=pagination
     )
-
 
 @app.route("/admin/logs")
 @login_required(level="admin")
 def visualizar_logs():
-    conn = sqlite3.connect("eleicao_cipa.db")
-    cursor = conn.cursor()
-
-    cursor.execute('''SELECT l.acao, u.username, 
-                     strftime('%d/%m/%Y %H:%M', l.data, 'localtime') as data_local
-                     FROM logs l
-                     JOIN usuarios u ON l.usuario_id = u.id
-                     ORDER BY l.data DESC''')
-    logs = cursor.fetchall()
-
-    conn.close()
-    return render_template("admin_logs.html", logs=logs)
-
-def criar_usuario_admin():
-    conn = sqlite3.connect("eleicao_cipa.db")
-    cursor = conn.cursor()
     try:
-        cursor.execute("DELETE FROM usuarios WHERE username = 'admin'")
-        senha_hash = hashlib.sha256("admin123".encode()).hexdigest()
-        cursor.execute(
-            "INSERT OR REPLACE INTO usuarios (username, password_hash, nivel) VALUES (?, ?, ?)",
-            ("admin", senha_hash, "admin")
+        # Consulta segura com tratamento de erros
+        logs_raw = db.session.execute(
+            db.select(
+                Log.acao,
+                Log.data,
+                Log.ip,
+                Log.user_agent,
+                Usuario.username
+            )
+            .join(Usuario, Log.usuario_id == Usuario.id, isouter=True)
+            .order_by(Log.data.desc())
+        ).all()
+
+        # Processamento dos dados
+        logs = []
+        for registro in logs_raw:
+            try:
+                dt_brasil = converter_para_brasil(registro.data)
+                logs.append({
+                    'acao': registro.acao,
+                    'data': formatar_data_brasil(dt_brasil),
+                    'ip': registro.ip or 'N/A',
+                    'user_agent': registro.user_agent[:75] + '...' if registro.user_agent else 'N/A',
+                    'username': registro.username or 'Sistema'
+                })
+            except Exception as e:
+                app.logger.error(f"Erro ao processar registro: {str(e)}")
+                continue
+
+        if not logs:
+            flash("Nenhum registro de log encontrado", "info")
+
+        return render_template("admin_logs.html", logs=logs)
+
+    except Exception as e:
+        app.logger.error(f"Erro grave ao acessar logs: {str(e)}", exc_info=True)
+        flash("Falha crítica ao carregar os logs. Verifique o arquivo de log para detalhes.", "danger")
+        return redirect(url_for('admin'))
+
+@app.route('/admin/exportar/<tipo>')
+@login_required(level="admin")
+def exportar_dados(tipo):
+    if tipo == 'votos':
+        votos = db.session.query(
+            Voto.cpf,
+            Filial.nome,
+            Candidato.nome,
+            db.func.strftime('%d/%m/%Y %H:%M', Voto.data_voto).label('data_voto')
+        ).join(Candidato).join(Filial).order_by(Voto.data_voto.desc()).all()
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['CPF', 'Filial', 'Candidato', 'Data/Hora'])
+        writer.writerows(votos)
+
+        output.seek(0)
+        return send_file(
+            io.BytesIO(output.getvalue().encode()),
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name='votos_cipa.csv'
         )
-        conn.commit()
-    except sqlite3.Error as e:
-        print(f"Erro ao criar usuário admin: {str(e)}")
-    finally:
-        conn.close()
+    
+    abort(404)
+
+@app.route('/recuperar-senha', methods=['GET', 'POST'])
+def recuperar_senha():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        usuario = Usuario.query.filter_by(username=email).first()
+        
+        if usuario:
+            token = hashlib.sha256(f"{email}{datetime.now()}".encode()).hexdigest()
+            expiracao = datetime.now() + timedelta(hours=1)
+            
+            reset_token = PasswordResetToken(
+                token=token,
+                usuario_id=usuario.id,
+                expiracao=expiracao
+            )
+            db.session.add(reset_token)
+            db.session.commit()
+            
+            reset_link = url_for('redefinir_senha', token=token, _external=True)
+            app.logger.info(f"Link de recuperação para {email}: {reset_link}")
+            
+        flash("Se o e-mail estiver cadastrado, você receberá um link para redefinir sua senha.", "info")
+        return redirect(url_for('login'))
+    
+    return render_template('recuperar_senha.html')
+
+@app.route('/redefinir-senha/<token>', methods=['GET', 'POST'])
+def redefinir_senha(token):
+    reset_token = PasswordResetToken.query.filter_by(token=token, usado=False).first()
+    
+    if not reset_token or reset_token.expiracao < datetime.now():
+        flash("Link inválido ou expirado", "danger")
+        return redirect(url_for('recuperar_senha'))
+    
+    if request.method == 'POST':
+        nova_senha = request.form.get('nova_senha')
+        confirmar_senha = request.form.get('confirmar_senha')
+        
+        if nova_senha != confirmar_senha:
+            flash("As senhas não coincidem", "danger")
+            return redirect(url_for('redefinir_senha', token=token))
+        
+        reset_token.usuario.password_hash = bcrypt.generate_password_hash(nova_senha).decode('utf-8')
+        reset_token.usado = True
+        db.session.commit()
+        
+        flash("Senha redefinida com sucesso! Faça login com sua nova senha.", "success")
+        return redirect(url_for('login'))
+    
+    return render_template('redefinir_senha.html', token=token)
+
+@app.route('/admin/usuarios')
+@login_required(level="admin")
+def gerenciar_usuarios():
+    usuarios = Usuario.query.order_by(Usuario.username).all()
+    return render_template('admin_usuarios.html', usuarios=usuarios)
+
+# Comandos CLI
+@app.cli.command('create-admin')
+def create_admin():
+    """Cria um usuário admin"""
+    username = input("Nome de usuário: ")
+    password = input("Senha: ")
+    
+    hashed_pw = bcrypt.generate_password_hash(password).decode('utf-8')
+    admin = Usuario(username=username, password_hash=hashed_pw, nivel='admin')
+    
+    db.session.add(admin)
+    db.session.commit()
+    print(f"Usuário admin '{username}' criado com sucesso!")
+
+    app.cli.add_command(create_admin)
 
 if __name__ == "__main__":
-    criar_banco()
-    criar_usuario_admin()  # Adicione esta linha
     app.run(debug=True)

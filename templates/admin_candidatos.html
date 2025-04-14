@@ -3,180 +3,498 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gerenciar Candidatos - Eleição CIPA</title>
+    <title>Candidatos - Eleição CIPA</title>
+    <!-- Bootstrap 5 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- AdminLTE style -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/admin-lte/3.2.0/css/adminlte.min.css">
     <style>
-        body { padding: 20px; background-color: #f8f9fa; }
-        .card { margin-bottom: 20px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        .table-responsive { max-height: 500px; overflow-y: auto; }
-        .action-buttons { min-width: 200px; }
-        .badge-active { background-color: #28a745; }
-        .badge-inactive { background-color: #6c757d; }
+        .badge-active {
+            background-color: rgba(40, 167, 69, 0.2);
+            color: #28a745;
+        }
+        .badge-inactive {
+            background-color: rgba(108, 117, 125, 0.2);
+            color: #6c757d;
+        }
+        .img-candidato {
+            width: 50px;
+            height: 50px;
+            object-fit: cover;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .img-candidato:hover {
+            transform: scale(1.05);
+        }
+        .custom-file-label::after {
+            content: "Procurar";
+        }
+        .user-placeholder {
+            background-color: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #6c757d;
+        }
+        /* Estilo para o modal de imagem */
+        .modal-image {
+            max-width: 100%;
+            max-height: 80vh;
+        }
+        .modal-content-image {
+            background-color: transparent;
+            border: none;
+        }
+    /* NOVOS ESTILOS PARA O MODAL DE IMAGEM */
+    .modal-image-container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        
+        .modal-image {
+            max-width: 100%;
+            max-height: 70vh;
+            display: block;
+            margin: 0 auto;
+        }
+        
+        /* Estilo existente para a imagem pequena na tabela */
+        .img-candidato {
+            width: 50px;
+            height: 50px;
+            object-fit: cover;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .img-candidato:hover {
+            transform: scale(1.05);
+        }
     </style>
 </head>
-<body>
-    <div class="container">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2>
-                <i class="bi bi-people-fill"></i> Gerenciamento de Candidatos
-            </h2>
-            <div>
-                <a href="/admin" class="btn btn-secondary">
-                    <i class="bi bi-arrow-left"></i> Voltar
-                </a>
-                <a href="/logout" class="btn btn-outline-danger ms-2">
-                    <i class="bi bi-box-arrow-right"></i> Sair
-                </a>
-            </div>
-        </div>
+<body class="hold-transition sidebar-mini layout-fixed">    
+    <div class="wrapper">
 
-        <!-- Mensagens Flash -->
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
+        <!-- Navbar original -->
+        <nav class="main-header navbar navbar-expand navbar-white navbar-light">
+            <!-- Itens alinhados à esquerda -->
+            <ul class="navbar-nav">
+                <li class="nav-item">
+                    <a class="nav-link" data-widget="pushmenu" href="#" role="button">
+                        <i class="fas fa-bars"></i>
+                    </a>
+                </li>
+                <li class="nav-item d-none d-sm-inline-block">
+                    <a href="/admin" class="nav-link">Home</a>
+                </li>
+            </ul>
 
-        <!-- Card de Adição -->
-        <div class="card mb-4">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">
-                    <i class="bi bi-plus-circle"></i> Adicionar Novo Candidato
-                </h5>
-            </div>
-            <div class="card-body">
-                <form method="POST" action="{{ url_for('gerenciar_candidatos') }}">
-                    <div class="row g-3">
-                        <div class="col-md-5">
-                            <input type="text" name="nome_candidato" class="form-control" 
-                                   placeholder="Nome completo do candidato" required>
-                        </div>
-                        <div class="col-md-4">
-                            <select name="filial_candidato" class="form-select" required>
-                                <option value="">Selecione a Filial</option>
-                                {% for id, nome in filiais %}
-                                <option value="{{ id }}">{{ nome }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <button type="submit" class="btn btn-success w-100">
-                                <i class="bi bi-save"></i> Salvar
-                            </button>
-                        </div>
-                    </div>
-                </form>
-            </div>
-        </div>
+            <!-- Itens alinhados à direita -->
+            <ul class="navbar-nav ml-auto">
+                <!-- Link para votação -->
+                <li class="nav-item">
+                    <a href="/" class="nav-link" title="Ir para votação">
+                        <i class="fas fa-vote-yea mr-1"></i>Votação
+                    </a>
+                </li>
+                
+                <!-- Botão de sair -->
+                <li class="nav-item">
+                    <a href="/logout" class="nav-link" title="Sair">
+                        <i class="fas fa-sign-out-alt mr-1"></i>Sair
+                    </a>
+                </li>
+            </ul>
+        </nav>
 
-        <!-- Card de Estatísticas -->
-        <div class="row mb-4">
-            <div class="col-md-4">
-                <div class="card text-center">
-                    <div class="card-body">
-                        <h5 class="card-title">Total de Candidatos</h5>
-                        <p class="card-text display-5">{{ candidatos|length }}</p>
+        <!-- Sidebar original -->
+        <aside class="main-sidebar sidebar-dark-primary elevation-4">
+            <!-- Brand Logo -->
+            <a href="/admin" class="brand-link">
+                <span class="brand-text font-weight-light">Eleição CIPA</span>
+            </a>
+
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <!-- Sidebar Menu -->
+                <nav class="mt-2">
+                    <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu" data-accordion="false">
+                        <li class="nav-item">
+                            <a href="/admin" class="nav-link">
+                                <i class="nav-icon fas fa-tachometer-alt"></i>
+                                <p>Dashboard</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{{ url_for('gerenciar_filiais') }}" class="nav-link">
+                                <i class="nav-icon fas fa-building"></i>
+                                <p>Filiais</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{{ url_for('gerenciar_candidatos') }}" class="nav-link active">
+                                <i class="nav-icon fas fa-users"></i>
+                                <p>Candidatos</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{{ url_for('visualizar_logs') }}" class="nav-link">
+                                <i class="nav-icon fas fa-clipboard-list"></i>
+                                <p>Logs do Sistema</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{{ url_for('resultados') }}" class="nav-link">  <!-- Remova a classe active -->
+                                <i class="nav-icon fas fa-chart-bar"></i>
+                                <p>Resultados</p>
+                            </a>
+                        </li>
+                        <li class="nav-item mt-3">
+                            <form method="POST" action="{{ url_for('resetar_votos') }}" onsubmit="return confirm('ATENÇÃO! Isso apagará TODOS os votos registrados. Deseja continuar?')">
+                                <button type="submit" class="btn btn-danger btn-block">
+                                    <i class="fas fa-trash"></i> Resetar Votos
+                                </button>
+                            </form>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+        </aside>
+
+        <!-- Content Wrapper original -->
+        <div class="content-wrapper">
+            <!-- Content Header -->
+            <div class="content-header">
+                <div class="container-fluid">
+                    <div class="row mb-2">
+                        <div class="col-sm-6">
+                            <h1 class="m-0">Gerenciamento de Candidatos</h1>
+                        </div>
+                        <div class="col-sm-6">
+                            <ol class="breadcrumb float-sm-right">
+                                <li class="breadcrumb-item"><a href="/admin">Home</a></li>
+                                <li class="breadcrumb-item active">Candidatos</li>
+                            </ol>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="col-md-4">
-                <div class="card text-center bg-success bg-opacity-10">
-                    <div class="card-body">
-                        <h5 class="card-title">Candidatos Ativos</h5>
-                        <p class="card-text display-5 text-success">{{ total_ativas }}</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card text-center bg-secondary bg-opacity-10">
-                    <div class="card-body">
-                        <h5 class="card-title">Candidatos Inativos</h5>
-                        <p class="card-text display-5 text-secondary">{{ total_inativas }}</p>
-                    </div>
-                </div>
-            </div>
-        </div>
 
-        <!-- Tabela de Candidatos -->
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">
-                    <i class="bi bi-list-ul"></i> Lista de Candidatos Cadastrados
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Nome</th>
-                                <th>Filial</th>
-                                <th>Status</th>
-                                <th>Data Criação</th>
-                                <th class="text-end action-buttons">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for candidato in candidatos %}
-                            <tr>
-                                <td>{{ candidato[0] }}</td>  <!-- ID -->
-                                <td>{{ candidato[1] }}</td>  <!-- Nome -->
-                                <td>{{ candidato[2] }}</td>  <!-- Filial -->
-                                <td>
-                                    <span class="badge {% if candidato[3] %}badge-active{% else %}badge-inactive{% endif %}">
-                                        {% if candidato[3] %}Ativo{% else %}Inativo{% endif %}
-                                    </span>
-                                </td>
-                                <td>{{ candidato[4] }}</td>  <!-- Data Criação -->
-                                <td class="text-end">
-                                    <div class="btn-group" role="group">
-                                        <form method="POST" class="d-inline">
-                                            <input type="hidden" name="toggle_candidato" value="{{ candidato[0] }}">
-                                            <button type="submit" 
-                                                    class="btn btn-sm {% if candidato[3] %}btn-warning{% else %}btn-info{% endif %} me-1">
-                                                {% if candidato[3] %}
-                                                    <i class="bi bi-pause-fill"></i> Desativar
-                                                {% else %}
-                                                    <i class="bi bi-play-fill"></i> Ativar
-                                                {% endif %}
-                                            </button>
-                                        </form>
-                                        <form method="POST" class="d-inline">
-                                            <input type="hidden" name="excluir_candidato" value="{{ candidato[0] }}">
-                                            <button type="submit" 
-                                                    class="btn btn-sm btn-danger"
-                                                    onclick="return confirm('Tem certeza que deseja excluir o candidato {{ candidato[1] }}?')">
-                                                <i class="bi bi-trash"></i> Excluir
-                                            </button>
-                                        </form>
-                                    </div>
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="6" class="text-center text-muted py-4">
-                                    <i class="bi bi-exclamation-circle"></i> Nenhum candidato cadastrado
-                                </td>
-                            </tr>
+            <!-- Main content original -->
+            <div class="content">
+                <div class="container-fluid">
+                    <!-- Mensagens Flash -->
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category }} alert-dismissible">
+                                    <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
+                                    {{ message }}
+                                </div>
                             {% endfor %}
-                        </tbody>
-                    </table>
+                        {% endif %}
+                    {% endwith %}
+
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h3 class="card-title">Adicionar Novo Candidato</h3>
+                                </div>
+                                <div class="card-body">
+                                    <form method="POST" action="{{ url_for('gerenciar_candidatos') }}" enctype="multipart/form-data">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <div class="form-group">
+                                            <label for="nome_candidato">Nome do Candidato</label>
+                                            <input type="text" name="nome_candidato" class="form-control" placeholder="Nome completo do candidato" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="filial_candidato">Filial</label>
+                                            <select name="filial_candidato" class="form-control" required>
+                                                <option value="">Selecione a Filial</option>
+                                                {% for filial in filiais %}
+                                                <option value="{{ filial.id }}">{{ filial.nome }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="foto_candidato">Foto do Candidato (Opcional)</label>
+                                            <div class="custom-file">
+                                                <input type="file" name="foto_candidato" class="custom-file-input" id="foto_candidato" accept="image/*">
+                                                <label class="custom-file-label" for="foto_candidato">Selecionar arquivo...</label>
+                                            </div>
+                                            <small class="form-text text-muted">Formatos: JPG, PNG (máx. 2MB)</small>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary">
+                                            <i class="fas fa-save"></i> Salvar
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-8">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h3 class="card-title">Lista de Candidatos</h3>
+                                    <div class="card-tools">
+                                        <div class="input-group input-group-sm" style="width: 150px;">
+                                            <input type="text" name="table_search" class="form-control float-right" placeholder="Buscar">
+                                            <div class="input-group-append">
+                                                <button type="submit" class="btn btn-default">
+                                                    <i class="fas fa-search"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body table-responsive p-0">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Foto</th>
+                                                <th>Nome</th>
+                                                <th>Filial</th>
+                                                <th>Status</th>
+                                                <th>Ações</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for candidato in candidatos %}
+                                            <tr>
+                                                <td>
+                                                    {% if candidato.foto %}
+                                                    <img src="{{ url_for('static', filename='uploads/candidatos/' + candidato.foto) }}" 
+                                                         class="img-candidato" alt="{{ candidato.nome }}"
+                                                         data-toggle="modal" data-target="#imageModal{{ candidato.id }}">
+                                                    {% else %}
+                                                    <div class="img-candidato user-placeholder">
+                                                        <i class="fas fa-user"></i>
+                                                    </div>
+                                                    {% endif %}
+                                                </td>
+                                                <td>{{ candidato.nome }}</td>
+                                                <td>{{ candidato.filial }}</td>
+                                                <td>
+                                                    <span class="badge {% if candidato.ativa %}badge-active{% else %}badge-inactive{% endif %}">
+                                                        {% if candidato.ativa %}Ativo{% else %}Inativo{% endif %}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <div class="btn-group">
+                                                        <button type="button" class="btn btn-sm btn-info" data-toggle="modal" data-target="#editModal{{ candidato.id }}">
+                                                            <i class="fas fa-edit"></i> Editar
+                                                        </button>
+                                                        <form method="POST" class="d-inline">
+                                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                            <input type="hidden" name="toggle_candidato" value="{{ candidato.id }}">
+                                                            <button type="submit" class="btn btn-sm {% if candidato.ativa %}btn-warning{% else %}btn-success{% endif %}">
+                                                                {% if candidato.ativa %}
+                                                                    <i class="fas fa-pause"></i> Desativar
+                                                                {% else %}
+                                                                    <i class="fas fa-play"></i> Ativar
+                                                                {% endif %}
+                                                            </button>
+                                                        </form>
+                                                        <form method="POST" class="d-inline">
+                                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                            <input type="hidden" name="excluir_candidato" value="{{ candidato.id }}">
+                                                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Tem certeza que deseja excluir o candidato {{ candidato.nome }}?')">
+                                                                <i class="fas fa-trash"></i> Excluir
+                                                            </button>
+                                                        </form>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {% else %}
+                                            <tr>
+                                                <td colspan="5" class="text-center text-muted py-4">
+                                                    <i class="fas fa-exclamation-circle"></i> Nenhum candidato cadastrado
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="card-footer clearfix">
+                                    <ul class="pagination pagination-sm m-0 float-right">
+                                        {% if pagination.has_prev %}
+                                            <li class="page-item">
+                                                <a class="page-link" href="{{ url_for('gerenciar_candidatos', page=pagination.prev_num) }}">&laquo;</a>
+                                            </li>
+                                        {% else %}
+                                            <li class="page-item disabled">
+                                                <span class="page-link">&laquo;</span>
+                                            </li>
+                                        {% endif %}
+                                        
+                                        {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=3) %}
+                                            {% if page_num %}
+                                                <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                                                    <a class="page-link" href="{{ url_for('gerenciar_candidatos', page=page_num) }}">{{ page_num }}</a>
+                                                </li>
+                                            {% else %}
+                                                <li class="page-item disabled">
+                                                    <span class="page-link">...</span>
+                                                </li>
+                                            {% endif %}
+                                        {% endfor %}
+                                        
+                                        {% if pagination.has_next %}
+                                            <li class="page-item">
+                                                <a class="page-link" href="{{ url_for('gerenciar_candidatos', page=pagination.next_num) }}">&raquo;</a>
+                                            </li>
+                                        {% else %}
+                                            <li class="page-item disabled">
+                                                <span class="page-link">&raquo;</span>
+                                            </li>
+                                        {% endif %}
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
+
+        <!-- Modal para visualização da imagem -->
+        {% for candidato in candidatos if candidato.foto %}
+        <div class="modal fade" id="imageModal{{ candidato.id }}" tabindex="-1" role="dialog" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Foto de {{ candidato.nome }}</h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body text-center modal-image-container">
+                        <img src="{{ url_for('static', filename='uploads/candidatos/' + candidato.foto) }}" 
+                             class="modal-image" alt="{{ candidato.nome }}">
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Fechar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
+        <!-- Modais de Edição (Versão Corrigida) -->
+        {% for candidato in candidatos %}
+        <div class="modal fade" id="editModal{{ candidato.id }}" tabindex="-1" role="dialog" aria-labelledby="editModalLabel" aria-hidden="true">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="editModalLabel">Editar Candidato</h5>
+                        <button type="button" class="close" data-bs-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <form method="POST" action="{{ url_for('gerenciar_candidatos') }}" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="editar_candidato" value="{{ candidato.id }}">
+                        
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label>Nome do Candidato</label>
+                                <input type="text" name="editar_nome" class="form-control" value="{{ candidato.nome }}" required>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Filial</label>
+                                <select name="editar_filial" class="form-control" required>
+                                    {% for filial in filiais %}
+                                    <option value="{{ filial.id }}" {% if filial.nome == candidato.filial %}selected{% endif %}>
+                                        {{ filial.nome }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Foto Atual</label>
+                                {% if candidato.foto %}
+                                <div class="mb-2 text-center">
+                                    <img src="{{ url_for('static', filename='uploads/candidatos/' + candidato.foto) }}" 
+                                         class="img-thumbnail" style="max-height: 150px;">
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="remover_foto" id="remover_foto_{{ candidato.id }}">
+                                    <label class="form-check-label" for="remover_foto_{{ candidato.id }}">
+                                        Remover foto atual
+                                    </label>
+                                </div>
+                                {% else %}
+                                <div class="text-muted">Nenhuma foto cadastrada</div>
+                                {% endif %}
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Nova Foto</label>
+                                <div class="custom-file">
+                                    <input type="file" class="custom-file-input" id="nova_foto_{{ candidato.id }}" name="nova_foto" accept="image/*">
+                                    <label class="custom-file-label" for="nova_foto_{{ candidato.id }}">Selecionar nova foto...</label>
+                                </div>
+                                <small class="form-text text-muted">Deixe em branco para manter a atual</small>
+                            </div>
+                        </div>
+                        
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
+        <!-- Footer original -->
+        <footer class="main-footer">
+            <strong>© GMO Facilities. Todos os direitos reservados.</strong>
+            <div class="float-right d-none d-sm-inline-block">
+                <span class="text-muted">Desenvolvido por </span>
+                <strong>Gabriel Raasch</strong>
+                <span class="text-muted mx-2">|</span>
+                <b>Versão</b> 1.0.0
+            </div>
+        </footer>
     </div>
-   <!-- Rodapé -->
-    <footer class="mt-5 py-3 text-center text-muted small border-top">
-        <p>© GMO Facilities. Todos os direitos reservados.</p>
-    </footer>
-    <!-- Bootstrap Bundle JS -->
+
+    <!-- jQuery -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <!-- Bootstrap 5 JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <!-- AdminLTE App -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/admin-lte/3.2.0/js/adminlte.min.js"></script>
+
+    <script>
+        // Script para mostrar nome do arquivo selecionado
+        document.querySelectorAll('.custom-file-input').forEach(function(input) {
+            input.addEventListener('change', function(e) {
+                var fileName = e.target.files[0] ? e.target.files[0].name : "Selecionar arquivo...";
+                var label = e.target.nextElementSibling;
+                label.innerText = fileName;
+            });
+        });
+
+        // Debug para modais
+        $(document).ready(function() {
+            $('[data-toggle="modal"]').on('click', function() {
+                var target = $(this).data('target');
+                console.log('Abrindo modal:', target);
+                
+                // Forçar abertura se necessário
+                $(target).modal('show');
+            });
+        });
+    </script>
 </body>
 </html>

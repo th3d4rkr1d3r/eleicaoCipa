@@ -18,7 +18,7 @@
             border-radius: 10px;
             box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.1);
             width: 100%;
-            max-width: 500px;
+            max-width: 600px;
         }
         .alert {
             margin-bottom: 20px;
@@ -26,8 +26,35 @@
         .form-select, .form-control {
             margin-bottom: 15px;
         }
-        select[name="candidato"] option {
-            font-family: 'Courier New', monospace;
+        .candidate-preview {
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        .candidate-photo {
+            width: 120px;
+            height: 120px;
+            object-fit: cover;
+            border-radius: 50%;
+            border: 3px solid #4a89dc;
+            margin-bottom: 10px;
+        }
+        .candidate-name {
+            font-weight: bold;
+            font-size: 1.2rem;
+            margin-bottom: 5px;
+        }
+        .candidate-branch {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        .placeholder-icon {
+            font-size: 50px;
+            color: #6c757d;
         }
     </style>
 </head>
@@ -49,6 +76,15 @@
             {% endwith %}
         </div>
 
+        <!-- Área de visualização do candidato -->
+        <div id="candidatePreview" class="candidate-preview" style="display: none;">
+            <div id="candidatePhotoContainer">
+                <i class="fas fa-user placeholder-icon"></i>
+            </div>
+            <div class="candidate-name" id="candidateName">Selecione um candidato</div>
+            <div class="candidate-branch" id="candidateBranch"></div>
+        </div>
+
         <form action="/votar" method="POST">
             <div class="mb-3">
                 <input type="text" name="cpf" class="form-control" 
@@ -58,7 +94,7 @@
                 <small class="text-muted">Apenas números (11 dígitos)</small>
             </div>
             
-            <select name="filial" class="form-select" required>
+            <select name="filial" class="form-select" id="filialSelect" required>
                 <option value="">Escolha sua Filial</option>
                 {% for id, nome in filiais %}
                 <option value="{{ id }}">{{ nome }}</option>
@@ -67,7 +103,7 @@
                 {% endfor %}
             </select>
             
-            <select name="candidato" class="form-select" required>
+            <select name="candidato" class="form-select" id="candidatoSelect" required disabled>
                 <option value="">Escolha um candidato</option>
                 <!-- Os candidatos serão preenchidos dinamicamente -->
             </select>
@@ -89,38 +125,98 @@
 
     <!-- Bootstrap JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <!-- Font Awesome -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
     
-    <!-- Script para carregar candidatos -->
+    <!-- Script para carregar candidatos e mostrar preview -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const filialSelect = document.querySelector('select[name="filial"]');
-            const candidatoSelect = document.querySelector('select[name="candidato"]');
-            
-            // Dados dos candidatos ordenados por ID
+            const filialSelect = document.getElementById('filialSelect');
+            const candidatoSelect = document.getElementById('candidatoSelect');
+            const candidatePreview = document.getElementById('candidatePreview');
+            const candidatePhotoContainer = document.getElementById('candidatePhotoContainer');
+            const candidateName = document.getElementById('candidateName');
+            const candidateBranch = document.getElementById('candidateBranch');
+
+            // Função para resetar a pré-visualização
+            function resetCandidatePreview() {
+                candidatePreview.style.display = 'none';
+                candidatePhotoContainer.innerHTML = '<i class="fas fa-user placeholder-icon"></i>';
+                candidateName.textContent = 'Selecione um candidato';
+                candidateBranch.textContent = '';
+            }
+
+            // Dados dos candidatos
             const candidatosData = [
-                {% for id, nome, filial_nome in candidatos %}
+                {% for id, nome, filial_nome, foto, filial_id_seq, filial_id in candidatos %}
                 { 
                     id: "{{ id }}", 
                     nome: "{{ nome }}", 
                     filial: "{{ filial_nome }}",
-                    idNumerico: parseInt("{{ id }}") 
+                    filial_id: "{{ filial_id }}",
+                    foto: "{{ foto if foto else '' }}",
+                    filial_id_seq: "{{ filial_id_seq }}"
                 },
                 {% endfor %}
-            ].sort((a, b) => a.idNumerico - b.idNumerico);
+            ].sort((a, b) => a.filial.localeCompare(b.filial) || a.filial_id_seq - b.filial_id_seq);
             
+            // Evento de mudança na filial
             filialSelect.addEventListener('change', function() {
+                const filialId = this.value;
                 const filialNome = this.options[this.selectedIndex].text;
+                
+                // Limpa e prepara o dropdown de candidatos
                 candidatoSelect.innerHTML = '<option value="">Escolha um candidato</option>';
                 
+                // Habilita o dropdown se uma filial foi selecionada
+                candidatoSelect.disabled = !filialId;
+                
+                // Reseta a pré-visualização
+                resetCandidatePreview();
+
+                if (filialId) {
+                    // Filtra candidatos pela filial selecionada
+                    const candidatosFilial = candidatosData.filter(c => c.filial_id == filialId);
+                    
+                    console.log('Candidatos para filial', filialId, ':', candidatosFilial);
+                    
+                    if (candidatosFilial.length === 0) {
+                        console.warn('Nenhum candidato encontrado para a filial:', filialNome);
+                    }
+
+                    // Preenche o dropdown de candidatos
+                    candidatosFilial.forEach(c => {
+                        const option = document.createElement('option');
+                        option.value = c.id;
+                        option.textContent = `${c.filial_id_seq.toString().padStart(3, '0')} - ${c.nome}`;
+                        option.dataset.candidateData = JSON.stringify(c);
+                        candidatoSelect.appendChild(option);
+                    });
+                }
+            });
+            
+            // Evento de mudança no candidato
+            candidatoSelect.addEventListener('change', function() {
                 if (this.value) {
-                    candidatosData
-                        .filter(c => c.filial === filialNome)
-                        .forEach(c => {
-                            const option = document.createElement('option');
-                            option.value = c.id;
-                            option.textContent = `${c.id.toString().padStart(3, '0')} - ${c.nome}`;
-                            candidatoSelect.appendChild(option);
-                        });
+                    const selectedOption = this.options[this.selectedIndex];
+                    const candidateData = JSON.parse(selectedOption.dataset.candidateData);
+                    
+                    // Atualiza a pré-visualização
+                    candidatePreview.style.display = 'block';
+                    
+                    if (candidateData.foto) {
+                        candidatePhotoContainer.innerHTML = `
+                            <img src="/static/uploads/candidatos/${candidateData.foto}" 
+                                 class="candidate-photo" 
+                                 alt="${candidateData.nome}">`;
+                    } else {
+                        candidatePhotoContainer.innerHTML = '<i class="fas fa-user placeholder-icon"></i>';
+                    }
+                    
+                    candidateName.textContent = candidateData.nome;
+                    candidateBranch.textContent = candidateData.filial;
+                } else {
+                    resetCandidatePreview();
                 }
             });
             
