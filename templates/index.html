@@ -125,12 +125,12 @@
             <input type="hidden" name="eleicao_id" id="eleicaoId" value="{{ eleicao_ativa.id if eleicao_ativa else '' }}">
 
             <div class="mb-3">
-                <input type="text" name="cpf" class="form-control"
-                       placeholder="Digite seu CPF" required
-                       oninput="this.value = this.value.replace(/[^0-9]/g, '')"
-                       maxlength="11">
-                <small class="text-muted">Apenas números (11 dígitos)</small>
-            </div>
+    <input type="text" name="cpf" class="form-control"
+           placeholder="Digite seu CPF" required
+           oninput="this.value = this.value.replace(/[^0-9]/g, '')"
+           maxlength="11">
+    <small class="text-muted">Apenas números (11 dígitos). Seu CPF será validado contra nossa base de funcionários.</small>
+</div>
             <div class="mb-3">
                 <input type="text" name="nome" class="form-control"
                     placeholder="Digite seu nome completo" required>

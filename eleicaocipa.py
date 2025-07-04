@@ -30,6 +30,13 @@ import os
 import time
 from werkzeug.utils import secure_filename
 import getpass
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
+
+# Configuração da conexão com o SQL Server
+SQL_SERVER_ENGINE = create_engine(Config.SQL_SERVER_URI)
+SQL_Session = sessionmaker(bind=SQL_SERVER_ENGINE)
 
 # Inicialização do aplicativo Flask
 app = Flask(__name__)
@@ -278,6 +285,33 @@ def validar_cpf(cpf):
     return (True, "CPF válido")
 
 
+def verificar_cpf_funcionario(cpf, filial_nome):
+    """Verifica se o CPF existe na tabela de funcionários e pertence à filial correta"""
+    try:
+        session = SQL_Session()
+
+        # Extrai apenas o nome principal da filial (antes do '-') para comparação
+        filial_base = filial_nome.split('-')[0].strip().upper()
+
+        query = text("""
+        SELECT RA_CIC, RA_NOME, RA_FILIAL 
+        FROM VIW_CIPA_CPF 
+        WHERE RA_CIC = :cpf
+        AND RA_FILIAL LIKE :filial
+        """)
+
+        result = session.execute(query, {'cpf': cpf, 'filial': f"{filial_base}%"}).fetchone()
+        session.close()
+
+        if result:
+            return True, result.RA_NOME  # Retorna True e o nome do funcionário
+        return False, "CPF não encontrado ou não pertence à filial selecionada"
+
+    except Exception as e:
+        app.logger.error(f"Erro ao verificar CPF no banco de dados: {str(e)}")
+        return False, f"Erro ao verificar CPF: {str(e)}"
+
+
 # Decorators
 def login_required(level="user"):
     def decorator(f):
@@ -371,17 +405,30 @@ def index():
 @csrf.exempt
 def votar():
     cpf = request.form["cpf"].strip()
-    nome = request.form["nome"].strip()  # Certifique-se que este campo existe
+    nome = request.form["nome"].strip()
     filial_id = request.form["filial"].strip()
     candidato_id = request.form["candidato"].strip()
     eleicao_id = request.form.get("eleicao_id", "").strip()
 
-    if not all([cpf, nome, filial_id, candidato_id, eleicao_id]):  # Verifique se o nome foi fornecido
+    if not all([cpf, nome, filial_id, candidato_id, eleicao_id]):
         flash("Todos os campos são obrigatórios!", "danger")
         return redirect(url_for("index"))
 
+    # Validação do CPF
     cpf_valido, mensagem = validar_cpf(cpf)
     if not cpf_valido:
+        flash(f"Erro: {mensagem}", "danger")
+        return redirect(url_for("index"))
+
+    # Obter o nome da filial selecionada
+    filial = Filial.query.get(filial_id)
+    if not filial:
+        flash("Filial inválida!", "danger")
+        return redirect(url_for("index"))
+
+    # Verificar se o CPF é de um funcionário da filial
+    cpf_cadastrado, mensagem = verificar_cpf_funcionario(cpf, filial.nome)
+    if not cpf_cadastrado:
         flash(f"Erro: {mensagem}", "danger")
         return redirect(url_for("index"))
 
@@ -393,7 +440,7 @@ def votar():
 
         novo_voto = Voto(
             cpf=cpf,
-            nome=nome,  # Certifique-se de incluir o nome
+            nome=nome,
             filial_id=filial_id,
             candidato_id=candidato_id,
             eleicao_id=eleicao_id
