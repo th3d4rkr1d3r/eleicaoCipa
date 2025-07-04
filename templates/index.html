@@ -56,12 +56,26 @@
             font-size: 50px;
             color: #6c757d;
         }
+        .eleicao-info {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        .eleicao-titulo {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+        .eleicao-periodo {
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
     </style>
 </head>
 <body>
     <div class="card text-center">
         <h3 class="mb-4">Vote para a CIPA</h3>
-        
+
         <!-- Área de mensagens -->
         <div class="w-100">
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -76,6 +90,28 @@
             {% endwith %}
         </div>
 
+        <!-- Informações da eleição ativa -->
+        {% if eleicao_ativa %}
+        <div class="eleicao-info text-start">
+            <div class="eleicao-titulo">{{ eleicao_ativa.titulo }}</div>
+            <div class="eleicao-periodo">
+                Período: {{ eleicao_ativa.data_inicio.strftime('%d/%m/%Y %H:%M') }} até {{ eleicao_ativa.data_fim.strftime('%d/%m/%Y %H:%M') }}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if eleicoes_ativas|length > 1 %}
+        <div class="mb-3">
+            <select class="form-select" id="eleicaoSelect">
+                {% for eleicao in eleicoes_ativas %}
+                <option value="{{ eleicao.id }}" {% if eleicao.id==eleicao_ativa.id %}selected{% endif %}>
+                    {{ eleicao.titulo }} ({{ eleicao.data_inicio.strftime('%d/%m/%Y') }} a {{ eleicao.data_fim.strftime('%d/%m/%Y') }})
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
         <!-- Área de visualização do candidato -->
         <div id="candidatePreview" class="candidate-preview" style="display: none;">
             <div id="candidatePhotoContainer">
@@ -86,29 +122,35 @@
         </div>
 
         <form action="/votar" method="POST">
+            <input type="hidden" name="eleicao_id" id="eleicaoId" value="{{ eleicao_ativa.id if eleicao_ativa else '' }}">
+
             <div class="mb-3">
-                <input type="text" name="cpf" class="form-control" 
+                <input type="text" name="cpf" class="form-control"
                        placeholder="Digite seu CPF" required
                        oninput="this.value = this.value.replace(/[^0-9]/g, '')"
                        maxlength="11">
                 <small class="text-muted">Apenas números (11 dígitos)</small>
             </div>
-            
+            <div class="mb-3">
+                <input type="text" name="nome" class="form-control"
+                    placeholder="Digite seu nome completo" required>
+            </div>
+
             <select name="filial" class="form-select" id="filialSelect" required>
                 <option value="">Escolha sua Filial</option>
-                {% for id, nome in filiais %}
-                <option value="{{ id }}">{{ nome }}</option>
+                {% for filial in filiais %}
+                <option value="{{ filial.id }}">{{ filial.nome }}</option>
                 {% else %}
                 <option value="" disabled>Nenhuma filial disponível</option>
                 {% endfor %}
             </select>
-            
+
             <select name="candidato" class="form-select" id="candidatoSelect" required disabled>
                 <option value="">Escolha um candidato</option>
                 <!-- Os candidatos serão preenchidos dinamicamente -->
             </select>
-            
-            <button type="submit" class="btn btn-success w-100 py-2">
+
+            <button type="submit" class="btn btn-success w-100 py-2" {% if not eleicao_ativa %}disabled{% endif %}>
                 Confirmar Voto
             </button>
         </form>
@@ -127,7 +169,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
     <!-- Font Awesome -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
-    
+
     <!-- Script para carregar candidatos e mostrar preview -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -137,6 +179,8 @@
             const candidatePhotoContainer = document.getElementById('candidatePhotoContainer');
             const candidateName = document.getElementById('candidateName');
             const candidateBranch = document.getElementById('candidateBranch');
+            const eleicaoIdInput = document.getElementById('eleicaoId');
+            const eleicaoSelect = document.getElementById('eleicaoSelect');
 
             // Função para resetar a pré-visualização
             function resetCandidatePreview() {
@@ -148,38 +192,48 @@
 
             // Dados dos candidatos
             const candidatosData = [
-                {% for id, nome, filial_nome, foto, filial_id_seq, filial_id in candidatos %}
-                { 
-                    id: "{{ id }}", 
-                    nome: "{{ nome }}", 
-                    filial: "{{ filial_nome }}",
-                    filial_id: "{{ filial_id }}",
-                    foto: "{{ foto if foto else '' }}",
-                    filial_id_seq: "{{ filial_id_seq }}"
+                {% for candidato in candidatos %}
+                {
+                    id: "{{ candidato.id }}",
+                    nome: "{{ candidato.nome }}",
+                    filial: "{{ candidato.filial_nome }}",
+                    filial_id: "{{ candidato.filial_id }}",
+                    eleicao_id: "{{ candidato.eleicao_id }}",
+                    foto: "{{ candidato.foto if candidato.foto else '' }}",
+                    filial_id_seq: "{{ candidato.filial_id_seq }}"
                 },
                 {% endfor %}
-            ].sort((a, b) => a.filial.localeCompare(b.filial) || a.filial_id_seq - b.filial_id_seq);
-            
+            ];
+
+            // Evento de mudança na eleição
+            if (eleicaoSelect) {
+                eleicaoSelect.addEventListener('change', function() {
+                    const eleicaoId = this.value;
+                    window.location.href = `/?eleicao=${eleicaoId}`;
+                });
+            }
+
             // Evento de mudança na filial
             filialSelect.addEventListener('change', function() {
                 const filialId = this.value;
                 const filialNome = this.options[this.selectedIndex].text;
-                
+                const eleicaoId = eleicaoIdInput.value;
+
                 // Limpa e prepara o dropdown de candidatos
                 candidatoSelect.innerHTML = '<option value="">Escolha um candidato</option>';
-                
+
                 // Habilita o dropdown se uma filial foi selecionada
                 candidatoSelect.disabled = !filialId;
-                
+
                 // Reseta a pré-visualização
                 resetCandidatePreview();
 
-                if (filialId) {
-                    // Filtra candidatos pela filial selecionada
-                    const candidatosFilial = candidatosData.filter(c => c.filial_id == filialId);
-                    
-                    console.log('Candidatos para filial', filialId, ':', candidatosFilial);
-                    
+                if (filialId && eleicaoId) {
+                    // Filtra candidatos pela filial e eleição selecionadas
+                    const candidatosFilial = candidatosData.filter(c =>
+                        c.filial_id == filialId && c.eleicao_id == eleicaoId
+                    );
+
                     if (candidatosFilial.length === 0) {
                         console.warn('Nenhum candidato encontrado para a filial:', filialNome);
                     }
@@ -194,32 +248,32 @@
                     });
                 }
             });
-            
+
             // Evento de mudança no candidato
             candidatoSelect.addEventListener('change', function() {
                 if (this.value) {
                     const selectedOption = this.options[this.selectedIndex];
                     const candidateData = JSON.parse(selectedOption.dataset.candidateData);
-                    
+
                     // Atualiza a pré-visualização
                     candidatePreview.style.display = 'block';
-                    
+
                     if (candidateData.foto) {
                         candidatePhotoContainer.innerHTML = `
-                            <img src="/static/uploads/candidatos/${candidateData.foto}" 
-                                 class="candidate-photo" 
+                            <img src="/static/uploads/candidatos/${candidateData.foto}"
+                                 class="candidate-photo"
                                  alt="${candidateData.nome}">`;
                     } else {
                         candidatePhotoContainer.innerHTML = '<i class="fas fa-user placeholder-icon"></i>';
                     }
-                    
+
                     candidateName.textContent = candidateData.nome;
                     candidateBranch.textContent = candidateData.filial;
                 } else {
                     resetCandidatePreview();
                 }
             });
-            
+
             // Tocar som se houver mensagem de sucesso
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}

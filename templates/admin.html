@@ -3,15 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel Administrativo - Eleição CIPA</title>
+    <title>Dashboard - Eleição CIPA</title>
     <!-- Bootstrap 5 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- AdminLTE style -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/admin-lte/3.2.0/css/adminlte.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Datepicker -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css">
     <style>
-        /* Cores personalizadas */
         :root {
             --primary: #4a89dc;
             --secondary: #6c757d;
@@ -20,87 +23,97 @@
             --warning: #ffc107;
             --danger: #e9573f;
         }
-        
-        /* Card personalizado */
+
         .custom-card {
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             transition: transform 0.3s;
             border-top: 3px solid var(--primary);
+            margin-bottom: 20px;
         }
-        
+
         .custom-card:hover {
             transform: translateY(-5px);
         }
-        
+
         .card-icon {
             font-size: 2.5rem;
             opacity: 0.7;
         }
-        
-        /* Sidebar personalizada */
-        .sidebar-dark-primary {
-            background-color: #343a40;
+
+        .chart-container {
+            position: relative;
+            height: 300px;
         }
-        
-        /* Tabelas */
-        .table thead {
+
+        .progress-xs {
+            height: 0.5rem;
+        }
+
+        .small-box {
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .info-box {
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+        }
+
+        .filter-card {
             background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .datepicker {
+            z-index: 9999 !important;
         }
     </style>
 </head>
 <body class="hold-transition sidebar-mini layout-fixed">
     <div class="wrapper">
 
-       <!-- Navbar completo corrigido -->
-<nav class="main-header navbar navbar-expand navbar-white navbar-light">
-    <!-- Itens alinhados à esquerda -->
-    <ul class="navbar-nav">
-        <li class="nav-item">
-            <a class="nav-link" data-widget="pushmenu" href="#" role="button">
-                <i class="fas fa-bars"></i>
-            </a>
-        </li>
-        <li class="nav-item d-none d-sm-inline-block">
-            <a href="/admin" class="nav-link">Home</a>
-        </li>
-    </ul>
+        <!-- Navbar -->
+        <nav class="main-header navbar navbar-expand navbar-white navbar-light">
+            <ul class="navbar-nav">
+                <li class="nav-item">
+                    <a class="nav-link" data-widget="pushmenu" href="#" role="button">
+                        <i class="fas fa-bars"></i>
+                    </a>
+                </li>
+                <li class="nav-item d-none d-sm-inline-block">
+                    <a href="/admin" class="nav-link">Home</a>
+                </li>
+            </ul>
 
-    <!-- Itens alinhados à direita - CORRIGIDO -->
-    <ul class="navbar-nav ml-auto">
-        <!-- Link para votação -->
-        <li class="nav-item">
-            <a href="/" class="nav-link" title="Ir para votação">
-                <i class="fas fa-vote-yea mr-1"></i>Votação
-            </a>
-        </li>
-        
-        <!-- Botão de sair -->
-        <li class="nav-item">
-            <a href="/logout" class="nav-link" title="Sair">
-                <i class="fas fa-sign-out-alt mr-1"></i>Sair
-            </a>
-        </li>
-        
-        <!-- Espaçador opcional para melhor alinhamento -->
-        <li class="nav-item">
-            <a class="nav-link" data-widget="fullscreen" href="#" role="button">
-                <i class="fas fa-expand-arrows-alt"></i>
-            </a>
-        </li>
-    </ul>
-</nav>
+            <ul class="navbar-nav ml-auto">
+                <li class="nav-item">
+                    <a href="/" class="nav-link" title="Ir para votação">
+                        <i class="fas fa-vote-yea mr-1"></i>Votação
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/logout" class="nav-link" title="Sair">
+                        <i class="fas fa-sign-out-alt mr-1"></i>Sair
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-widget="fullscreen" href="#" role="button">
+                        <i class="fas fa-expand-arrows-alt"></i>
+                    </a>
+                </li>
+            </ul>
+        </nav>
 
         <!-- Sidebar -->
         <aside class="main-sidebar sidebar-dark-primary elevation-4">
-            <!-- Brand Logo -->
             <a href="/admin" class="brand-link">
                 <span class="brand-text font-weight-light">Eleição CIPA</span>
             </a>
 
-            <!-- Sidebar -->
             <div class="sidebar">
-                <!-- Sidebar Menu -->
                 <nav class="mt-2">
                     <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu" data-accordion="false">
                         <li class="nav-item">
@@ -122,22 +135,26 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a href="{{ url_for('gerenciar_eleicoes') }}" class="nav-link">
+                                <i class="nav-icon fas fa-vote-yea"></i>
+                                <p>Eleicoes</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a href="{{ url_for('visualizar_logs') }}" class="nav-link">
                                 <i class="nav-icon fas fa-clipboard-list"></i>
                                 <p>Logs do Sistema</p>
                             </a>
-                            <li class="nav-item">
-                                <a href="{{ url_for('resultados') }}" class="nav-link">  <!-- Remova a classe active -->
-                                    <i class="nav-icon fas fa-chart-bar"></i>
-                                    <p>Resultados</p>
-                                </a>
-                            </li>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{{ url_for('resultados') }}" class="nav-link">
+                                <i class="nav-icon fas fa-chart-bar"></i>
+                                <p>Resultados</p>
+                            </a>
                         </li>
                         <li class="nav-item mt-3">
-                            <form method="POST" action="{{ url_for('resetar_votos') }}">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                <button type="submit" class="btn btn-danger btn-block" 
-                                        onclick="return confirm('ATENÇÃO! Isso apagará TODOS os votos registrados. Deseja continuar?')">
+                            <form method="POST" action="{{ url_for('resetar_votos') }}" onsubmit="return confirm('ATENÇÃO! Isso apagará TODOS os votos registrados. Deseja continuar?')">
+                                <button type="submit" class="btn btn-danger btn-block">
                                     <i class="fas fa-trash"></i> Resetar Votos
                                 </button>
                             </form>
@@ -154,11 +171,11 @@
                 <div class="container-fluid">
                     <div class="row mb-2">
                         <div class="col-sm-6">
-                            <h1 class="m-0">Dashboard</h1>
+                            <h1 class="m-0">Dashboard da Eleição</h1>
                         </div>
                         <div class="col-sm-6">
                             <ol class="breadcrumb float-sm-right">
-                                <li class="breadcrumb-item active">Painel Administrativo</li>
+                                <li class="breadcrumb-item active">Dashboard</li>
                             </ol>
                         </div>
                     </div>
@@ -180,27 +197,99 @@
                         {% endif %}
                     {% endwith %}
 
+                    <!-- Filtros -->
+                    <div class="card filter-card">
+                        <div class="card-header">
+                            <h3 class="card-title">Filtros</h3>
+                        </div>
+                        <div class="card-body">
+                            <form method="GET" action="{{ url_for('admin') }}">
+                                <div class="row">
+                                    <div class="col-md-3">
+                                        <div class="form-group">
+                                            <label>Eleição</label>
+                                            <select name="eleicao_id" class="form-control">
+                                                <option value="">Todas</option>
+                                                {% for eleicao in todas_eleicoes %}
+                                                <option value="{{ eleicao.id }}" {% if eleicao.id == filtro_eleicao %}selected{% endif %}>{{ eleicao.titulo }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="form-group">
+                                            <label>Filial</label>
+                                            <select name="filial_id" class="form-control">
+                                                <option value="">Todas</option>
+                                                {% for filial in todas_filiais %}
+                                                <option value="{{ filial.id }}" {% if filial.id == filtro_filial %}selected{% endif %}>{{ filial.nome }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="form-group">
+                                            <label>Candidato</label>
+                                            <select name="candidato_id" class="form-control">
+                                                <option value="">Todos</option>
+                                                {% for candidato in todos_candidatos %}
+                                                <option value="{{ candidato.id }}" {% if candidato.id == filtro_candidato %}selected{% endif %}>{{ candidato.nome }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="form-group">
+                                            <label>Período</label>
+                                            <div class="input-group">
+                                                <input type="text" name="data_inicio" class="form-control datepicker" placeholder="Data Início" value="{{ filtro_data_inicio }}">
+                                                <input type="text" name="data_fim" class="form-control datepicker" placeholder="Data Fim" value="{{ filtro_data_fim }}">
+                                                <button type="submit" class="btn btn-primary">
+                                                    <i class="fas fa-filter"></i> Filtrar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
                     <!-- Cards de Estatísticas -->
                     <div class="row">
-                        <div class="col-lg-4 col-6">
-                            <div class="small-box bg-info custom-card">
+                        <div class="col-lg-3 col-6">
+                            <div class="small-box bg-info">
                                 <div class="inner">
-                                    <h3>{{ total_filiais }}</h3>
-                                    <p>Filiais Cadastradas</p>
+                                    <h3>{{ total_votos }}</h3>
+                                    <p>Total de Votos</p>
                                 </div>
                                 <div class="icon">
-                                    <i class="fas fa-building"></i>
+                                    <i class="fas fa-vote-yea"></i>
                                 </div>
-                                <a href="{{ url_for('gerenciar_filiais') }}" class="small-box-footer">
+                                <a href="{{ url_for('resultados') }}" class="small-box-footer">
                                     Mais informações <i class="fas fa-arrow-circle-right"></i>
                                 </a>
                             </div>
                         </div>
-                        <div class="col-lg-4 col-6">
-                            <div class="small-box bg-success custom-card">
+                        <div class="col-lg-3 col-6">
+                            <div class="small-box bg-success">
+                                <div class="inner">
+                                    <h3>{{ eleicoes_ativas }}</h3>
+                                    <p>Eleições Ativas</p>
+                                </div>
+                                <div class="icon">
+                                    <i class="fas fa-check-circle"></i>
+                                </div>
+                                <a href="{{ url_for('gerenciar_eleicoes') }}" class="small-box-footer">
+                                    Mais informações <i class="fas fa-arrow-circle-right"></i>
+                                </a>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-6">
+                            <div class="small-box bg-warning">
                                 <div class="inner">
                                     <h3>{{ total_candidatos }}</h3>
-                                    <p>Candidatos Cadastrados</p>
+                                    <p>Candidatos</p>
                                 </div>
                                 <div class="icon">
                                     <i class="fas fa-users"></i>
@@ -210,103 +299,171 @@
                                 </a>
                             </div>
                         </div>
-                        <div class="col-lg-4 col-6">
-                            <div class="small-box bg-warning custom-card">
+                        <div class="col-lg-3 col-6">
+                            <div class="small-box bg-danger">
                                 <div class="inner">
-                                    <h3>{{ total_votos }}</h3>
-                                    <p>Votos Registrados</p>
+                                    <h3>{{ total_filiais }}</h3>
+                                    <p>Filiais</p>
                                 </div>
                                 <div class="icon">
-                                    <i class="fas fa-vote-yea"></i>
+                                    <i class="fas fa-building"></i>
                                 </div>
-                                <a href="/resultados" class="small-box-footer">
-                                    Ver resultados <i class="fas fa-arrow-circle-right"></i>
+                                <a href="{{ url_for('gerenciar_filiais') }}" class="small-box-footer">
+                                    Mais informações <i class="fas fa-arrow-circle-right"></i>
                                 </a>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Tabela de Filiais -->
+                    <!-- Gráficos Principais -->
                     <div class="row">
-                        <div class="col-12">
-                            <div class="card">
+                        <!-- Gráfico de Votos por Candidato -->
+                        <div class="col-md-6">
+                            <div class="card custom-card">
                                 <div class="card-header">
-                                    <h3 class="card-title">Filiais Cadastradas</h3>
-                                    <div class="card-tools">
-                                        <a href="{{ url_for('gerenciar_filiais') }}" class="btn btn-sm btn-primary">
-                                            <i class="fas fa-plus"></i> Nova Filial
-                                        </a>
+                                    <h3 class="card-title">Top 10 Candidatos Mais Votados</h3>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-container">
+                                        <canvas id="topCandidatosChart"></canvas>
                                     </div>
                                 </div>
-                                <div class="card-body table-responsive p-0">
-                                    <table class="table table-hover text-nowrap">
-                                        <thead>
-                                            <tr>
-                                                <th>ID</th>
-                                                <th>Nome</th>
-                                                <th>Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {% for id, nome, ativa in filiais %}
-                                            <tr>
-                                                <td>{{ id }}</td>
-                                                <td>{{ nome }}</td>
-                                                <td>
-                                                    {% if ativa %}
-                                                        <span class="badge bg-success">Ativa</span>
-                                                    {% else %}
-                                                        <span class="badge bg-secondary">Inativa</span>
-                                                    {% endif %}
-                                                </td>
-                                            </tr>
-                                            {% endfor %}
-                                        </tbody>
-                                    </table>
+                            </div>
+                        </div>
+
+                        <!-- Gráfico de Votos por Filial -->
+                        <div class="col-md-6">
+                            <div class="card custom-card">
+                                <div class="card-header">
+                                    <h3 class="card-title">Votos por Filial</h3>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-container">
+                                        <canvas id="votosFilialChart"></canvas>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Tabela de Candidatos -->
+                    <!-- Linha do Tempo e Mapa de Calor -->
                     <div class="row">
-                        <div class="col-12">
-                            <div class="card">
+                        <!-- Linha do Tempo de Votação -->
+                        <div class="col-md-8">
+                            <div class="card custom-card">
                                 <div class="card-header">
-                                    <h3 class="card-title">Candidatos Cadastrados</h3>
+                                    <h3 class="card-title">Votação ao Longo do Tempo</h3>
                                     <div class="card-tools">
-                                        <a href="{{ url_for('gerenciar_candidatos') }}" class="btn btn-sm btn-primary">
-                                            <i class="fas fa-plus"></i> Novo Candidato
-                                        </a>
+                                        <div class="btn-group">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary timeline-range" data-range="24">24h</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary timeline-range" data-range="72">72h</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary timeline-range active" data-range="168">7 dias</button>
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="card-body table-responsive p-0">
-                                    <table class="table table-hover text-nowrap">
-                                        <thead>
-                                            <tr>
-                                                <th>ID</th>
-                                                <th>Nome</th>
-                                                <th>Filial</th>
-                                                <th>Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {% for id, nome, filial, ativa in candidatos %}
-                                            <tr>
-                                                <td>{{ id }}</td>
-                                                <td>{{ nome }}</td>
-                                                <td>{{ filial }}</td>
-                                                <td>
-                                                    {% if ativa %}
-                                                        <span class="badge bg-success">Ativo</span>
-                                                    {% else %}
-                                                        <span class="badge bg-secondary">Inativo</span>
-                                                    {% endif %}
-                                                </td>
-                                            </tr>
+                                <div class="card-body">
+                                    <div class="chart-container">
+                                        <canvas id="timelineChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Mapa de Calor de Participação -->
+                        <div class="col-md-4">
+                            <div class="card custom-card">
+                                <div class="card-header">
+                                    <h3 class="card-title">Participação por Hora do Dia</h3>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-container">
+                                        <canvas id="heatmapChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Últimos Votos e Estatísticas -->
+                    <div class="row">
+                        <!-- Últimos Votos Registrados -->
+                        <div class="col-md-6">
+                            <div class="card custom-card">
+                                <div class="card-header">
+                                    <h3 class="card-title">Últimos Votos Registrados</h3>
+                                    <div class="card-tools">
+                                        <span class="badge bg-primary">{{ ultimos_votos|length }} recentes</span>
+                                    </div>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div class="table-responsive">
+                                        <table class="table table-hover">
+                                            <thead>
+                                                <tr>
+                                                    <th>Data/Hora</th>
+                                                    <th>Filial</th>
+                                                    <th>Candidato</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for voto in ultimos_votos %}
+                                                <tr>
+                                                    <td>{{ voto.data_voto.strftime('%d/%m/%Y %H:%M') }}</td>
+                                                    <td>{{ voto.filial.nome }}</td>
+                                                    <td>{{ voto.candidato.nome }}</td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Estatísticas de Participação -->
+                        <div class="col-md-6">
+                            <div class="card custom-card">
+                                <div class="card-header">
+                                    <h3 class="card-title">Estatísticas de Participação</h3>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <h5>Meta de Participação</h5>
+                                        <div class="progress progress-xs">
+                                            <div class="progress-bar bg-success" style="width: {{ percentual_participacao }}%"></div>
+                                        </div>
+                                        <small>{{ percentual_participacao }}% do total esperado ({{ total_votos }}/{{ meta_votos }})</small>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <h5>Taxa de Votação</h5>
+                                        <div class="row">
+                                            <div class="col-6">
+                                                <small>Por hora: {{ votos_por_hora }} votos</small>
+                                                <div class="progress progress-xs">
+                                                    <div class="progress-bar bg-info" style="width: {{ (votos_por_hora/max_votos_hora)*100 if max_votos_hora > 0 else 0 }}%"></div>
+                                                </div>
+                                            </div>
+                                            <div class="col-6">
+                                                <small>Por dia: {{ votos_por_dia }} votos</small>
+                                                <div class="progress progress-xs">
+                                                    <div class="progress-bar bg-warning" style="width: {{ (votos_por_dia/max_votos_dia)*100 if max_votos_dia > 0 else 0 }}%"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <h5>Filiais com Maior Participação</h5>
+                                        <ul class="list-group">
+                                            {% for filial in filiais_participacao %}
+                                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                {{ filial.nome }}
+                                                <span class="badge bg-primary rounded-pill">{{ filial.total_votos }}</span>
+                                            </li>
                                             {% endfor %}
-                                        </tbody>
-                                    </table>
+                                        </ul>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -324,15 +481,16 @@
                     </div>
                     <div class="col-sm-6 text-right">
                         <small class="text-muted">
-                            <i class="fas fa-code mr-1"></i>Desenvolvido por 
+                            <i class="fas fa-code mr-1"></i>Desenvolvido por
                             <a href="https://br.linkedin.com/in/gabriel-raasch-4158a6230" target="_blank" class="text-bold">Gabriel Raasch</a>
                             <span class="mx-2">•</span>
-                            <b>v1.0.0</b>
+                            <b>v3.0.0</b>
                         </small>
                     </div>
                 </div>
             </div>
         </footer>
+    </div>
 
     <!-- jQuery -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
@@ -340,18 +498,168 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
     <!-- AdminLTE App -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/admin-lte/3.2.0/js/adminlte.min.js"></script>
-    <!-- Custom Scripts -->
+    <!-- Datepicker -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/js/bootstrap-datepicker.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/locales/bootstrap-datepicker.pt-BR.min.js"></script>
+
+    <!-- Scripts dos Gráficos -->
     <script>
-        $(document).ready(function() {
-            // Inicializa o menu lateral
-            $('[data-widget="treeview"]').Treeview('init');
-            
-            // Atualiza o contador de votos periodicamente (opcional)
-            setInterval(function() {
-                $.get('/api/votos/count', function(data) {
-                    $('.small-box.bg-warning .inner h3').text(data.total);
+        document.addEventListener('DOMContentLoaded', function() {
+            // Inicializa datepicker
+            $('.datepicker').datepicker({
+                format: 'dd/mm/yyyy',
+                language: 'pt-BR',
+                autoclose: true
+            });
+
+            // Gráfico de Top Candidatos
+            const topCandidatosCtx = document.getElementById('topCandidatosChart').getContext('2d');
+            const topCandidatosChart = new Chart(topCandidatosCtx, {
+                type: 'bar',
+                data: {
+                    labels: {{ candidatos_top_labels|tojson|safe }},
+                    datasets: [{
+                        label: 'Votos',
+                        data: {{ candidatos_top_data|tojson|safe }},
+                        backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+
+            // Gráfico de Votos por Filial
+            const votosFilialCtx = document.getElementById('votosFilialChart').getContext('2d');
+            const votosFilialChart = new Chart(votosFilialCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: {{ filiais_labels|tojson|safe }},
+                    datasets: [{
+                        data: {{ filiais_data|tojson|safe }},
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.7)',
+                            'rgba(54, 162, 235, 0.7)',
+                            'rgba(255, 206, 86, 0.7)',
+                            'rgba(75, 192, 192, 0.7)',
+                            'rgba(153, 102, 255, 0.7)',
+                            'rgba(255, 159, 64, 0.7)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+
+            // Gráfico de Linha do Tempo
+            const timelineCtx = document.getElementById('timelineChart').getContext('2d');
+            let timelineChart = new Chart(timelineCtx, {
+                type: 'line',
+                data: {
+                    labels: {{ timeline_labels|tojson|safe }},
+                    datasets: [{
+                        label: 'Votos acumulados',
+                        data: {{ timeline_data|tojson|safe }},
+                        fill: true,
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Mapa de Calor por Hora
+            const heatmapCtx = document.getElementById('heatmapChart').getContext('2d');
+            const heatmapChart = new Chart(heatmapCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['00h', '01h', '02h', '03h', '04h', '05h', '06h', '07h', '08h', '09h', '10h', '11h',
+                            '12h', '13h', '14h', '15h', '16h', '17h', '18h', '19h', '20h', '21h', '22h', '23h'],
+                    datasets: [{
+                        label: 'Votos por hora',
+                        data: {{ heatmap_data|tojson|safe }},
+                        backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+
+            // Botões de intervalo de tempo
+            $('.timeline-range').click(function() {
+                $('.timeline-range').removeClass('active');
+                $(this).addClass('active');
+                const range = $(this).data('range');
+                atualizarTimeline(range);
+            });
+
+            // Função para atualizar o gráfico de timeline
+            function atualizarTimeline(range) {
+                $.ajax({
+                    url: '/admin/timeline',
+                    method: 'GET',
+                    data: {
+                        range: range,
+                        eleicao_id: '{{ filtro_eleicao }}',
+                        filial_id: '{{ filtro_filial }}',
+                        candidato_id: '{{ filtro_candidato }}',
+                        data_inicio: '{{ filtro_data_inicio }}',
+                        data_fim: '{{ filtro_data_fim }}'
+                    },
+                    success: function(data) {
+                        timelineChart.data.labels = data.labels;
+                        timelineChart.data.datasets[0].data = data.data;
+                        timelineChart.update();
+                    }
                 });
-            }, 30000);
+            }
         });
     </script>
 </body>

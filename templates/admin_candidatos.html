@@ -143,6 +143,12 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a href="{{ url_for('gerenciar_eleicoes') }}" class="nav-link">
+                                <i class="nav-icon fas fa-vote-yea"></i>
+                                <p>Eleicoes</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a href="{{ url_for('visualizar_logs') }}" class="nav-link">
                                 <i class="nav-icon fas fa-clipboard-list"></i>
                                 <p>Logs do Sistema</p>
@@ -214,13 +220,24 @@
                                             <input type="text" name="nome_candidato" class="form-control" placeholder="Nome completo do candidato" required>
                                         </div>
                                         <div class="form-group">
-                                            <label for="filial_candidato">Filial</label>
-                                            <select name="filial_candidato" class="form-control" required>
-                                                <option value="">Selecione a Filial</option>
-                                                {% for filial in filiais %}
-                                                <option value="{{ filial.id }}">{{ filial.nome }}</option>
-                                                {% endfor %}
-                                            </select>
+    <label for="filial_candidato">Filial</label>
+    <select name="filial_candidato" class="form-control" required>
+        <option value="">Selecione a Filial</option>
+        {% for filial in filiais %}
+        <option value="{{ filial.id }}">{{ filial.nome }}</option>
+        {% endfor %}
+    </select>
+</div>
+<!-- Adicione este campo de seleção de eleição -->
+<div class="form-group">
+    <label for="eleicao_candidato">Eleição</label>
+    <select name="eleicao_candidato" class="form-control" required>
+        <option value="">Selecione a Eleição</option>
+        {% for eleicao in eleicoes %}
+        <option value="{{ eleicao.id }}">{{ eleicao.titulo }}</option>
+        {% endfor %}
+    </select>
+</div>
                                         </div>
                                         <div class="form-group">
                                             <label for="foto_candidato">Foto do Candidato (Opcional)</label>
@@ -456,14 +473,22 @@
         </div>
         {% endfor %}
 
-        <!-- Footer original -->
+        <!-- Footer -->
         <footer class="main-footer">
-            <strong>© GMO Facilities. Todos os direitos reservados.</strong>
-            <div class="float-right d-none d-sm-inline-block">
-                <span class="text-muted">Desenvolvido por </span>
-                <strong>Gabriel Raasch</strong>
-                <span class="text-muted mx-2">|</span>
-                <b>Versão</b> 1.0.0
+            <div class="container-fluid">
+                <div class="row">
+                    <div class="col-sm-6">
+                        <strong>© GMO Facilities. Todos os direitos reservados.</strong>
+                    </div>
+                    <div class="col-sm-6 text-right">
+                        <small class="text-muted">
+                            <i class="fas fa-code mr-1"></i>Desenvolvido por
+                            <a href="https://br.linkedin.com/in/gabriel-raasch-4158a6230" target="_blank" class="text-bold">Gabriel Raasch</a>
+                            <span class="mx-2">•</span>
+                            <b>v3.0.0</b>
+                        </small>
+                    </div>
+                </div>
             </div>
         </footer>
     </div>

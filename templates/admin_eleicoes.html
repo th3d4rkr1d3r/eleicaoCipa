@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Filiais - Eleição CIPA</title>
+    <title>Eleicoes - Eleição CIPA</title>
     <!-- Bootstrap 5 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css">
     <!-- Font Awesome -->
@@ -14,55 +14,45 @@
 <body class="hold-transition sidebar-mini layout-fixed">
     <div class="wrapper">
 
-       <!-- Navbar completo corrigido -->
-<nav class="main-header navbar navbar-expand navbar-white navbar-light">
-    <!-- Itens alinhados à esquerda -->
-    <ul class="navbar-nav">
-        <li class="nav-item">
-            <a class="nav-link" data-widget="pushmenu" href="#" role="button">
-                <i class="fas fa-bars"></i>
-            </a>
-        </li>
-        <li class="nav-item d-none d-sm-inline-block">
-            <a href="/admin" class="nav-link">Home</a>
-        </li>
-    </ul>
+        <!-- Navbar -->
+        <nav class="main-header navbar navbar-expand navbar-white navbar-light">
+            <ul class="navbar-nav">
+                <li class="nav-item">
+                    <a class="nav-link" data-widget="pushmenu" href="#" role="button">
+                        <i class="fas fa-bars"></i>
+                    </a>
+                </li>
+                <li class="nav-item d-none d-sm-inline-block">
+                    <a href="/admin" class="nav-link">Home</a>
+                </li>
+            </ul>
 
-    <!-- Itens alinhados à direita - CORRIGIDO -->
-    <ul class="navbar-nav ml-auto">
-        <!-- Link para votação -->
-        <li class="nav-item">
-            <a href="/" class="nav-link" title="Ir para votação">
-                <i class="fas fa-vote-yea mr-1"></i>Votação
-            </a>
-        </li>
-        
-        <!-- Botão de sair -->
-        <li class="nav-item">
-            <a href="/logout" class="nav-link" title="Sair">
-                <i class="fas fa-sign-out-alt mr-1"></i>Sair
-            </a>
-        </li>
-        
-        <!-- Espaçador opcional para melhor alinhamento -->
-        <li class="nav-item">
-            <a class="nav-link" data-widget="fullscreen" href="#" role="button">
-                <i class="fas fa-expand-arrows-alt"></i>
-            </a>
-        </li>
-    </ul>
-</nav>
+            <ul class="navbar-nav ml-auto">
+                <li class="nav-item">
+                    <a href="/" class="nav-link" title="Ir para votação">
+                        <i class="fas fa-vote-yea mr-1"></i>Votação
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/logout" class="nav-link" title="Sair">
+                        <i class="fas fa-sign-out-alt mr-1"></i>Sair
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-widget="fullscreen" href="#" role="button">
+                        <i class="fas fa-expand-arrows-alt"></i>
+                    </a>
+                </li>
+            </ul>
+        </nav>
 
         <!-- Sidebar -->
         <aside class="main-sidebar sidebar-dark-primary elevation-4">
-            <!-- Brand Logo -->
             <a href="/admin" class="brand-link">
                 <span class="brand-text font-weight-light">Eleição CIPA</span>
             </a>
 
-            <!-- Sidebar -->
             <div class="sidebar">
-                <!-- Sidebar Menu -->
                 <nav class="mt-2">
                     <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu" data-accordion="false">
                         <li class="nav-item">
@@ -72,7 +62,7 @@
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a href="{{ url_for('gerenciar_filiais') }}" class="nav-link active">
+                            <a href="{{ url_for('gerenciar_filiais') }}" class="nav-link">
                                 <i class="nav-icon fas fa-building"></i>
                                 <p>Filiais</p>
                             </a>
@@ -84,7 +74,7 @@
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a href="{{ url_for('gerenciar_eleicoes') }}" class="nav-link">
+                            <a href="{{ url_for('gerenciar_eleicoes') }}" class="nav-link active">
                                 <i class="nav-icon fas fa-vote-yea"></i>
                                 <p>Eleicoes</p>
                             </a>
@@ -96,7 +86,7 @@
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a href="{{ url_for('resultados') }}" class="nav-link">  <!-- Remova a classe active -->
+                            <a href="{{ url_for('resultados') }}" class="nav-link">
                                 <i class="nav-icon fas fa-chart-bar"></i>
                                 <p>Resultados</p>
                             </a>
@@ -120,12 +110,12 @@
                 <div class="container-fluid">
                     <div class="row mb-2">
                         <div class="col-sm-6">
-                            <h1 class="m-0">Gerenciamento de Filiais</h1>
+                            <h1 class="m-0">Gerenciamento de Eleições</h1>
                         </div>
                         <div class="col-sm-6">
                             <ol class="breadcrumb float-sm-right">
                                 <li class="breadcrumb-item"><a href="/admin">Home</a></li>
-                                <li class="breadcrumb-item active">Filiais</li>
+                                <li class="breadcrumb-item active">Eleicoes</li>
                             </ol>
                         </div>
                     </div>
@@ -151,18 +141,26 @@
                         <div class="col-md-4">
                             <div class="card">
                                 <div class="card-header">
-                                    <h3 class="card-title">Adicionar Nova Filial</h3>
+                                    <h3 class="card-title">Nova Eleição</h3>
                                 </div>
                                 <div class="card-body">
-                                    <form method="POST" action="{{ url_for('gerenciar_filiais') }}">
+                                    <form method="POST" action="{{ url_for('gerenciar_eleicoes') }}">
                                         {{ form.hidden_tag() }}
                                         <div class="form-group">
-                                            <label for="nome">Nome da Filial</label>
-                                            {{ form.nome(class="form-control", placeholder="Nome da filial (Ex: SÃO PAULO)", required=true) }}
+                                            <label for="titulo">Título</label>
+                                            {{ form.titulo(class="form-control", placeholder="Título da eleição", required=true) }}
                                         </div>
                                         <div class="form-group">
-                                            <label for="eleicao_id">Eleição</label>
-                                            {{ form.eleicao_id(class="form-control", required=true) }}
+                                            <label for="descricao">Descrição (Opcional)</label>
+                                            {{ form.descricao(class="form-control", rows=3, placeholder="Descrição detalhada") }}
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="data_inicio">Data de Início</label>
+                                            {{ form.data_inicio(class="form-control", type="datetime-local", required=true) }}
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="data_fim">Data de Término</label>
+                                            {{ form.data_fim(class="form-control", type="datetime-local", required=true) }}
                                         </div>
                                         <button type="submit" class="btn btn-primary">
                                             <i class="fas fa-save"></i> Salvar
@@ -178,17 +176,17 @@
                                 <div class="card-body">
                                     <div class="small-box bg-info">
                                         <div class="inner">
-                                            <h3>{{ filiais|length }}</h3>
-                                            <p>Total de Filiais</p>
+                                            <h3>{{ eleicoes|length }}</h3>
+                                            <p>Total de Eleições</p>
                                         </div>
                                         <div class="icon">
-                                            <i class="fas fa-building"></i>
+                                            <i class="fas fa-vote-yea"></i>
                                         </div>
                                     </div>
                                     <div class="small-box bg-success">
                                         <div class="inner">
                                             <h3>{{ total_ativas }}</h3>
-                                            <p>Filiais Ativas</p>
+                                            <p>Eleicoes Ativas</p>
                                         </div>
                                         <div class="icon">
                                             <i class="fas fa-check-circle"></i>
@@ -197,7 +195,7 @@
                                     <div class="small-box bg-secondary">
                                         <div class="inner">
                                             <h3>{{ total_inativas }}</h3>
-                                            <p>Filiais Inativas</p>
+                                            <p>Eleicoes Inativas</p>
                                         </div>
                                         <div class="icon">
                                             <i class="fas fa-pause-circle"></i>
@@ -210,7 +208,7 @@
                         <div class="col-md-8">
                             <div class="card">
                                 <div class="card-header">
-                                    <h3 class="card-title">Lista de Filiais</h3>
+                                    <h3 class="card-title">Lista de Eleições</h3>
                                     <div class="card-tools">
                                         <div class="input-group input-group-sm" style="width: 150px;">
                                             <input type="text" name="table_search" class="form-control float-right" placeholder="Buscar">
@@ -227,34 +225,35 @@
                                         <thead>
                                             <tr>
                                                 <th>ID</th>
-                                                <th>Nome</th>
-                                                <th>Eleicao</th>
+                                                <th>Título</th>
+                                                <th>Período</th>
                                                 <th>Status</th>
-                                                <th>Data Criação</th>
                                                 <th>Ações</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {% for id, nome, ativa, eleicao_nome, data_criacao in filiais %}
+                                            {% for eleicao in eleicoes %}
                                             <tr>
-                                                <td>{{ id }}</td>
-                                                <td>{{ nome }}</td>
-                                                <td>{{ eleicao_nome }}</td>
+                                                <td>{{ eleicao.id }}</td>
+                                                <td>{{ eleicao.titulo }}</td>
                                                 <td>
-                                                    {% if ativa %}
+                                                    {{ eleicao.data_inicio }}<br>
+                                                    até {{ eleicao.data_fim }}
+                                                </td>
+                                                <td>
+                                                    {% if eleicao.ativa %}
                                                         <span class="badge bg-success">Ativa</span>
                                                     {% else %}
                                                         <span class="badge bg-secondary">Inativa</span>
                                                     {% endif %}
                                                 </td>
-                                                <td>{{ data_criacao }}</td>
                                                 <td>
                                                     <div class="btn-group">
                                                         <form method="POST" class="d-inline">
                                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                                            <input type="hidden" name="toggle_filial" value="{{ id }}">
-                                                            <button type="submit" class="btn btn-sm {% if ativa %}btn-warning{% else %}btn-info{% endif %}">
-                                                                {% if ativa %}
+                                                            <input type="hidden" name="toggle_eleicao" value="{{ eleicao.id }}">
+                                                            <button type="submit" class="btn btn-sm {% if eleicao.ativa %}btn-warning{% else %}btn-info{% endif %}">
+                                                                {% if eleicao.ativa %}
                                                                     <i class="fas fa-pause"></i> Desativar
                                                                 {% else %}
                                                                     <i class="fas fa-play"></i> Ativar
@@ -263,8 +262,8 @@
                                                         </form>
                                                         <form method="POST" class="d-inline">
                                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                                            <input type="hidden" name="excluir_filial" value="{{ id }}">
-                                                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Tem certeza que deseja excluir a filial {{ nome }}?')">
+                                                            <input type="hidden" name="excluir_eleicao" value="{{ eleicao.id }}">
+                                                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Tem certeza que deseja excluir a eleição {{ eleicao.titulo }}?')">
                                                                 <i class="fas fa-trash"></i> Excluir
                                                             </button>
                                                         </form>
@@ -273,8 +272,8 @@
                                             </tr>
                                             {% else %}
                                             <tr>
-                                                <td colspan="6" class="text-center text-muted py-4">
-                                                    <i class="fas fa-exclamation-circle"></i> Nenhuma filial cadastrada
+                                                <td colspan="5" class="text-center text-muted py-4">
+                                                    <i class="fas fa-exclamation-circle"></i> Nenhuma eleição cadastrada
                                                 </td>
                                             </tr>
                                             {% endfor %}
@@ -285,18 +284,18 @@
                                     <ul class="pagination pagination-sm m-0 float-right">
                                         {% if pagination.has_prev %}
                                             <li class="page-item">
-                                                <a class="page-link" href="{{ url_for('gerenciar_filiais', page=pagination.prev_num) }}">&laquo;</a>
+                                                <a class="page-link" href="{{ url_for('gerenciar_eleicoes', page=pagination.prev_num) }}">&laquo;</a>
                                             </li>
                                         {% else %}
                                             <li class="page-item disabled">
                                                 <span class="page-link">&laquo;</span>
                                             </li>
                                         {% endif %}
-                                        
+
                                         {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=3) %}
                                             {% if page_num %}
                                                 <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
-                                                    <a class="page-link" href="{{ url_for('gerenciar_filiais', page=page_num) }}">{{ page_num }}</a>
+                                                    <a class="page-link" href="{{ url_for('gerenciar_eleicoes', page=page_num) }}">{{ page_num }}</a>
                                                 </li>
                                             {% else %}
                                                 <li class="page-item disabled">
@@ -304,10 +303,10 @@
                                                 </li>
                                             {% endif %}
                                         {% endfor %}
-                                        
+
                                         {% if pagination.has_next %}
                                             <li class="page-item">
-                                                <a class="page-link" href="{{ url_for('gerenciar_filiais', page=pagination.next_num) }}">&raquo;</a>
+                                                <a class="page-link" href="{{ url_for('gerenciar_eleicoes', page=pagination.next_num) }}">&raquo;</a>
                                             </li>
                                         {% else %}
                                             <li class="page-item disabled">
@@ -332,7 +331,7 @@
                     </div>
                     <div class="col-sm-6 text-right">
                         <small class="text-muted">
-                            <i class="fas fa-code mr-1"></i>Desenvolvido por 
+                            <i class="fas fa-code mr-1"></i>Desenvolvido por
                             <a href="https://br.linkedin.com/in/gabriel-raasch-4158a6230" target="_blank" class="text-bold">Gabriel Raasch</a>
                             <span class="mx-2">•</span>
                             <b>v3.0.0</b>
@@ -341,6 +340,7 @@
                 </div>
             </div>
         </footer>
+    </div>
 
     <!-- jQuery -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>

@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">  <!-- AQUI -->
     <title>Resultados - Eleição CIPA</title>
     <!-- Bootstrap 5 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css">
@@ -54,6 +55,30 @@
             margin-right: 15px;
             color: #6c757d;
         }
+        .eleicao-header {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .eleicao-titulo {
+            font-weight: bold;
+            font-size: 1.2rem;
+            margin-bottom: 5px;
+        }
+        .eleicao-periodo {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+         .btn-anular {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+    }
+
+    .actions-column {
+        width: 100px;
+        text-align: center;
+    }
     </style>
 </head>
 <body class="hold-transition sidebar-mini layout-fixed">
@@ -119,6 +144,12 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a href="{{ url_for('gerenciar_eleicoes') }}" class="nav-link">
+                                <i class="nav-icon fas fa-vote-yea"></i>
+                                <p>Eleicoes</p>
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a href="{{ url_for('visualizar_logs') }}" class="nav-link">
                                 <i class="nav-icon fas fa-clipboard-list"></i>
                                 <p>Logs do Sistema</p>
@@ -176,6 +207,20 @@
                         {% endif %}
                     {% endwith %}
 
+                    <!-- Informações da eleição selecionada -->
+                    {% if eleicao_selecionada %}
+                        {% for eleicao in eleicoes %}
+                            {% if eleicao.id == eleicao_selecionada %}
+                            <div class="eleicao-header">
+                                <div class="eleicao-titulo">{{ eleicao.titulo }}</div>
+                                <div class="eleicao-periodo">
+                                    Período: {{ eleicao.data_inicio.strftime('%d/%m/%Y %H:%M') }} até {{ eleicao.data_fim.strftime('%d/%m/%Y %H:%M') }}
+                                </div>
+                            </div>
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
+
                     <!-- Cards de Estatísticas -->
                     <div class="row">
                         <div class="col-lg-4 col-6">
@@ -221,7 +266,19 @@
                         <div class="card-body">
                             <form method="get" action="/resultados">
                                 <div class="row">
-                                    <div class="col-md-4">
+                                    <div class="col-md-3">
+                                        <div class="form-group">
+                                            <label>Eleicao</label>
+                                            <select name="eleicao" class="form-control">
+                                                {% for eleicao in eleicoes %}
+                                                <option value="{{ eleicao.id }}" {% if eleicao.id == eleicao_selecionada %}selected{% endif %}>
+                                                    {{ eleicao.titulo }}
+                                                </option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
                                         <div class="form-group">
                                             <label>Filial</label>
                                             <select name="filial" class="form-control">
@@ -232,13 +289,13 @@
                                             </select>
                                         </div>
                                     </div>
-                                    <div class="col-md-3">
+                                    <div class="col-md-2">
                                         <div class="form-group">
                                             <label>Data Início</label>
                                             <input type="date" name="data_inicio" class="form-control" value="{{ data_inicio }}">
                                         </div>
                                     </div>
-                                    <div class="col-md-3">
+                                    <div class="col-md-2">
                                         <div class="form-group">
                                             <label>Data Fim</label>
                                             <input type="date" name="data_fim" class="form-control" value="{{ data_fim }}">
@@ -270,74 +327,112 @@
 
                     <!-- Tabela de Resultados com Fotos -->
                     <div class="card">
-                        <div class="card-header">
-                            <h3 class="card-title">Resumo por Candidato</h3>
+    <div class="card-header">
+        <h3 class="card-title">Resumo por Candidato</h3>
+    </div>
+    <div class="card-body table-responsive p-0">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Candidato</th>
+                    <th>Votos</th>
+                    <th>Percentual</th>
+                    <th>Último Voto</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for candidato, votos, data, foto in resultados %}
+                <tr>
+                    <td>
+                        <div class="candidate-info">
+                            {% if foto %}
+                            <img src="{{ url_for('static', filename='uploads/candidatos/' + foto) }}"
+                                 class="candidate-photo"
+                                 alt="{{ candidato }}">
+                            {% else %}
+                            <div class="photo-placeholder">
+                                <i class="fas fa-user"></i>
+                            </div>
+                            {% endif %}
+                            <span>{{ candidato }}</span>
                         </div>
-                        <div class="card-body table-responsive p-0">
-                            <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>Candidato</th>
-                                        <th>Votos</th>
-                                        <th>Percentual</th>
-                                        <th>Último Voto</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for candidato, votos, data, foto in resultados %}
-                                    <tr>
-                                        <td>
-                                            <div class="candidate-info">
-                                                {% if foto %}
-                                                <img src="{{ url_for('static', filename='uploads/candidatos/' + foto) }}" 
-                                                     class="candidate-photo" 
-                                                     alt="{{ candidato }}">
-                                                {% else %}
-                                                <div class="photo-placeholder">
-                                                    <i class="fas fa-user"></i>
-                                                </div>
-                                                {% endif %}
-                                                <span>{{ candidato }}</span>
-                                            </div>
-                                        </td>
-                                        <td>{{ votos }}</td>
-                                        <td>
-                                            <div class="progress progress-xs">
-                                                <div class="progress-bar bg-primary" style="width: {{ (votos/total_votos)*100 if total_votos > 0 else 0 }}%"></div>
-                                            </div>
-                                            <small>
-                                                {{ ((votos/total_votos)*100)|round(1) if total_votos > 0 else 0 }}%
-                                            </small>
-                                        </td>
-                                        <td>{{ data }}</td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
+                    </td>
+                    <td>{{ votos }}</td>
+                    <td>
+                        <div class="progress progress-xs">
+                            <div class="progress-bar bg-primary" style="width: {{ (votos/total_votos)*100 if total_votos > 0 else 0 }}%"></div>
                         </div>
-                    </div>
-                </div>
+                        <small>
+                            {{ ((votos/total_votos)*100)|round(1) if total_votos > 0 else 0 }}%
+                        </small>
+                    </td>
+                    <td>{{ data }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Detalhes dos Votos (Lista Completa) -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Detalhes dos Votos</h3>
+    </div>
+    <div class="card-body table-responsive p-0">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>CPF</th>
+                    <th>Nome</th>
+                    <th>Filial</th>
+                    <th>Candidato</th>
+                    <th>Data/Hora</th>
+                    <th class="actions-column">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for cpf, nome, filial, candidato, data, voto_id in detalhes_votos %}
+                <tr>
+                    <td>{{ cpf[:3] }}.{{ cpf[3:6] }}.{{ cpf[6:9] }}-{{ cpf[9:] }}</td>
+                    <td>{{ nome }}</td>
+                    <td>{{ filial }}</td>
+                    <td>{{ candidato }}</td>
+                    <td>{{ data }}</td>
+                    <td class="actions-column">
+    <form method="POST" action="{{ url_for('anular_voto', voto_id=voto_id) }}"
+          onsubmit="return confirm('Tem certeza que deseja anular este voto?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <button type="submit" class="btn btn-danger btn-sm btn-anular" title="Anular Voto">
+            <i class="fas fa-ban"></i>
+        </button>
+    </form>
+</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+       <!-- Footer -->
+<footer class="main-footer">
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-sm-6">
+                <strong>© GMO Facilities. Todos os direitos reservados.</strong>
+            </div>
+            <div class="col-sm-6 text-right">
+                <small class="text-muted">
+                    <i class="fas fa-code mr-1"></i>Desenvolvido por
+                    <a href="https://br.linkedin.com/in/gabriel-raasch-4158a6230" target="_blank" class="text-bold">Gabriel Raasch</a>
+                    <span class="mx-2">•</span>
+                    <b>v3.0.0</b>
+                </small>
             </div>
         </div>
-
-        <!-- Footer -->
-        <footer class="main-footer">
-            <div class="container-fluid">
-                <div class="row">
-                    <div class="col-sm-6">
-                        <strong>© GMO Facilities. Todos os direitos reservados.</strong>
-                    </div>
-                    <div class="col-sm-6 text-right">
-                        <small class="text-muted">
-                            <i class="fas fa-code mr-1"></i>Desenvolvido por 
-                            <a href="https://br.linkedin.com/in/gabriel-raasch-4158a6230" target="_blank" class="text-bold">Gabriel Raasch</a>
-                            <span class="mx-2">•</span>
-                            <b>v1.0.0</b>
-                        </small>
-                    </div>
-                </div>
-            </div>
-        </footer>
+    </div>
+</footer>
 
     </div>
 
@@ -379,5 +474,15 @@
             });
         });
     </script>
+                <script>
+    // Configuração do CSRF para requisições AJAX
+    $.ajaxSetup({
+        beforeSend: function(xhr, settings) {
+            if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
+                xhr.setRequestHeader("X-CSRFToken", $('meta[name="csrf-token"]').attr('content'));
+            }
+        }
+    });
+</script>
 </body>
 </html>
