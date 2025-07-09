@@ -139,71 +139,90 @@
 
                     <div class="row">
                         <div class="col-md-4">
-                            <div class="card">
-                                <div class="card-header">
-                                    <h3 class="card-title">Nova Eleição</h3>
-                                </div>
-                                <div class="card-body">
-                                    <form method="POST" action="{{ url_for('gerenciar_eleicoes') }}">
-                                        {{ form.hidden_tag() }}
-                                        <div class="form-group">
-                                            <label for="titulo">Título</label>
-                                            {{ form.titulo(class="form-control", placeholder="Título da eleição", required=true) }}
-                                        </div>
-                                        <div class="form-group">
-                                            <label for="descricao">Descrição (Opcional)</label>
-                                            {{ form.descricao(class="form-control", rows=3, placeholder="Descrição detalhada") }}
-                                        </div>
-                                        <div class="form-group">
-                                            <label for="data_inicio">Data de Início</label>
-                                            {{ form.data_inicio(class="form-control", type="datetime-local", required=true) }}
-                                        </div>
-                                        <div class="form-group">
-                                            <label for="data_fim">Data de Término</label>
-                                            {{ form.data_fim(class="form-control", type="datetime-local", required=true) }}
-                                        </div>
-                                        <button type="submit" class="btn btn-primary">
-                                            <i class="fas fa-save"></i> Salvar
-                                        </button>
-                                    </form>
-                                </div>
-                            </div>
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">
+                {% if eleicao_editando %}
+                    Editar Eleição: {{ eleicao_editando.titulo }}
+                {% else %}
+                    Nova Eleição
+                {% endif %}
+            </h3>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('gerenciar_eleicoes') }}">
+                {{ form.hidden_tag() }}
+                {% if eleicao_editando %}
+                    <input type="hidden" name="eleicao_id" value="{{ eleicao_editando.id }}">
+                {% endif %}
+                <div class="form-group">
+                    <label for="titulo">Título</label>
+                    {{ form.titulo(class="form-control", placeholder="Título da eleição", required=true) }}
+                </div>
+                <div class="form-group">
+                    <label for="descricao">Descrição (Opcional)</label>
+                    {{ form.descricao(class="form-control", rows=3, placeholder="Descrição detalhada") }}
+                </div>
+                <div class="form-group">
+                    <label for="data_inicio">Data de Início</label>
+                    {{ form.data_inicio(class="form-control", type="datetime-local", required=true) }}
+                </div>
+                <div class="form-group">
+                    <label for="data_fim">Data de Término</label>
+                    {{ form.data_fim(class="form-control", type="datetime-local", required=true) }}
+                </div>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i>
+                    {% if eleicao_editando %}
+                        Atualizar
+                    {% else %}
+                        Salvar
+                    {% endif %}
+                </button>
+                {% if eleicao_editando %}
+                    <a href="{{ url_for('gerenciar_eleicoes') }}" class="btn btn-secondary">
+                        <i class="fas fa-times"></i> Cancelar
+                    </a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
 
-                            <div class="card">
-                                <div class="card-header">
-                                    <h3 class="card-title">Estatísticas</h3>
-                                </div>
-                                <div class="card-body">
-                                    <div class="small-box bg-info">
-                                        <div class="inner">
-                                            <h3>{{ eleicoes|length }}</h3>
-                                            <p>Total de Eleições</p>
-                                        </div>
-                                        <div class="icon">
-                                            <i class="fas fa-vote-yea"></i>
-                                        </div>
-                                    </div>
-                                    <div class="small-box bg-success">
-                                        <div class="inner">
-                                            <h3>{{ total_ativas }}</h3>
-                                            <p>Eleicoes Ativas</p>
-                                        </div>
-                                        <div class="icon">
-                                            <i class="fas fa-check-circle"></i>
-                                        </div>
-                                    </div>
-                                    <div class="small-box bg-secondary">
-                                        <div class="inner">
-                                            <h3>{{ total_inativas }}</h3>
-                                            <p>Eleicoes Inativas</p>
-                                        </div>
-                                        <div class="icon">
-                                            <i class="fas fa-pause-circle"></i>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Estatísticas</h3>
+        </div>
+        <div class="card-body">
+            <div class="small-box bg-info">
+                <div class="inner">
+                    <h3>{{ eleicoes|length }}</h3>
+                    <p>Total de Eleições</p>
+                </div>
+                <div class="icon">
+                    <i class="fas fa-vote-yea"></i>
+                </div>
+            </div>
+            <div class="small-box bg-success">
+                <div class="inner">
+                    <h3>{{ total_ativas }}</h3>
+                    <p>Eleicoes Ativas</p>
+                </div>
+                <div class="icon">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+            </div>
+            <div class="small-box bg-secondary">
+                <div class="inner">
+                    <h3>{{ total_inativas }}</h3>
+                    <p>Eleicoes Inativas</p>
+                </div>
+                <div class="icon">
+                    <i class="fas fa-pause-circle"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
                         <div class="col-md-8">
                             <div class="card">
@@ -247,28 +266,40 @@
                                                         <span class="badge bg-secondary">Inativa</span>
                                                     {% endif %}
                                                 </td>
-                                                <td>
-                                                    <div class="btn-group">
-                                                        <form method="POST" class="d-inline">
-                                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                                            <input type="hidden" name="toggle_eleicao" value="{{ eleicao.id }}">
-                                                            <button type="submit" class="btn btn-sm {% if eleicao.ativa %}btn-warning{% else %}btn-info{% endif %}">
-                                                                {% if eleicao.ativa %}
-                                                                    <i class="fas fa-pause"></i> Desativar
-                                                                {% else %}
-                                                                    <i class="fas fa-play"></i> Ativar
-                                                                {% endif %}
-                                                            </button>
-                                                        </form>
-                                                        <form method="POST" class="d-inline">
-                                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                                            <input type="hidden" name="excluir_eleicao" value="{{ eleicao.id }}">
-                                                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Tem certeza que deseja excluir a eleição {{ eleicao.titulo }}?')">
-                                                                <i class="fas fa-trash"></i> Excluir
-                                                            </button>
-                                                        </form>
-                                                    </div>
-                                                </td>
+                                               <td>
+    <div class="btn-group">
+        <!-- Botão Editar -->
+        <form method="POST" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="editar_eleicao" value="{{ eleicao.id }}">
+            <button type="submit" class="btn btn-sm btn-info">
+                <i class="fas fa-edit"></i> Editar
+            </button>
+        </form>
+
+        <!-- Botão Ativar/Desativar -->
+        <form method="POST" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="toggle_eleicao" value="{{ eleicao.id }}">
+            <button type="submit" class="btn btn-sm {% if eleicao.ativa %}btn-warning{% else %}btn-success{% endif %}">
+                {% if eleicao.ativa %}
+                    <i class="fas fa-pause"></i> Desativar
+                {% else %}
+                    <i class="fas fa-play"></i> Ativar
+                {% endif %}
+            </button>
+        </form>
+
+        <!-- Botão Excluir -->
+        <form method="POST" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="excluir_eleicao" value="{{ eleicao.id }}">
+            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Tem certeza que deseja excluir a eleição {{ eleicao.titulo }}?')">
+                <i class="fas fa-trash"></i> Excluir
+            </button>
+        </form>
+    </div>
+</td>
                                             </tr>
                                             {% else %}
                                             <tr>

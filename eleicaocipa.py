@@ -34,6 +34,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
 
+fuso_brasil = pytz.timezone('America/Sao_Paulo')
+data_local = datetime.now(fuso_brasil)
+
 # Configuração da conexão com o SQL Server
 SQL_SERVER_ENGINE = create_engine(Config.SQL_SERVER_URI)
 SQL_Session = sessionmaker(bind=SQL_SERVER_ENGINE)
@@ -97,6 +100,12 @@ handler.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 handler.setFormatter(formatter)
 app.logger.addHandler(handler)
+
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'connect_args': {
+        'options': '-c timezone=America/Sao_Paulo'
+    }
+}
 
 
 # Forms
@@ -293,19 +302,44 @@ def verificar_cpf_funcionario(cpf, filial_nome):
         # Extrai apenas o nome principal da filial (antes do '-') para comparação
         filial_base = filial_nome.split('-')[0].strip().upper()
 
+        # Determinar o grupo da filial selecionada
+        if filial_base.startswith('GMO'):
+            grupo_filial = 'GMO'
+        elif filial_base.startswith('PAC'):
+            grupo_filial = 'PAC'
+        elif filial_base.startswith('POLY'):
+            grupo_filial = 'POLY'
+        else:
+            grupo_filial = None
+
         query = text("""
         SELECT RA_CIC, RA_NOME, RA_FILIAL 
         FROM VIW_CIPA_CPF 
         WHERE RA_CIC = :cpf
-        AND RA_FILIAL LIKE :filial
         """)
 
-        result = session.execute(query, {'cpf': cpf, 'filial': f"{filial_base}%"}).fetchone()
+        result = session.execute(query, {'cpf': cpf}).fetchone()
         session.close()
 
-        if result:
-            return True, result.RA_NOME  # Retorna True e o nome do funcionário
-        return False, "CPF não encontrado ou não pertence à filial selecionada"
+        if not result:
+            return False, "CPF não encontrado"
+
+        # Determinar o grupo do funcionário
+        funcionario_filial = result.RA_FILIAL.strip().upper()
+        if funcionario_filial.startswith('GMO'):
+            grupo_funcionario = 'GMO'
+        elif funcionario_filial.startswith('PAC'):
+            grupo_funcionario = 'PAC'
+        elif funcionario_filial.startswith('POLY'):
+            grupo_funcionario = 'POLY'
+        else:
+            grupo_funcionario = None
+
+        # Verificar se os grupos são compatíveis
+        if grupo_filial and grupo_funcionario and grupo_filial == grupo_funcionario:
+            return True, result.RA_NOME
+        else:
+            return False, f"Funcionário pertence a {grupo_funcionario} e não pode votar em {grupo_filial}"
 
     except Exception as e:
         app.logger.error(f"Erro ao verificar CPF no banco de dados: {str(e)}")
@@ -345,7 +379,7 @@ def login_required(level="user"):
 def index():
     try:
         # Obter todas eleições ativas (dentro do período válido)
-        agora = datetime.now()
+        agora = datetime.now(fuso_brasil)
         eleicoes_ativas = Eleicao.query.filter(
             Eleicao.ativa == True,
             Eleicao.data_inicio <= agora,
@@ -413,6 +447,17 @@ def votar():
     if not all([cpf, nome, filial_id, candidato_id, eleicao_id]):
         flash("Todos os campos são obrigatórios!", "danger")
         return redirect(url_for("index"))
+        # Obter o nome da filial selecionada
+    filial = Filial.query.get(filial_id)
+    if not filial:
+        flash("Filial inválida!", "danger")
+        return redirect(url_for("index"))
+
+    # Verificar se o CPF é de um funcionário do grupo correto
+    cpf_cadastrado, mensagem = verificar_cpf_funcionario(cpf, filial.nome)
+    if not cpf_cadastrado:
+        flash(f"Erro: {mensagem}", "danger")
+        return redirect(url_for("index"))
 
     # Validação do CPF
     cpf_valido, mensagem = validar_cpf(cpf)
@@ -443,8 +488,10 @@ def votar():
             nome=nome,
             filial_id=filial_id,
             candidato_id=candidato_id,
-            eleicao_id=eleicao_id
+            eleicao_id=eleicao_id,
+            data_voto=datetime.utcnow()  # Usar UTC para armazenamento interno
         )
+
         db.session.add(novo_voto)
         db.session.commit()
 
@@ -546,14 +593,18 @@ def resultados():
     # Processar detalhes dos votos (mantenha como tuplas)
     detalhes_votos = []
     for voto_id, cpf, nome, filial, candidato, data_voto in detalhes_query.order_by(Voto.data_voto.desc()).all():
-        dt_brasil = converter_para_brasil(data_voto)
+        # Converter explicitamente para o fuso do Brasil
+        if data_voto.tzinfo is None:
+            data_voto = pytz.utc.localize(data_voto)  # Assumir UTC se não tiver timezone
+        dt_brasil = data_voto.astimezone(pytz.timezone('America/Sao_Paulo'))
+
         detalhes_votos.append((
             cpf,
             nome,
             filial,
             candidato,
             formatar_data_brasil(dt_brasil),
-            voto_id  # Adicionamos o ID para o botão de anulação
+            voto_id
         ))
 
     # Calcular total de votos
@@ -648,7 +699,7 @@ def admin():
         total_votos = query_votos.count()
 
         # Eleições ativas (dentro do período válido)
-        agora = datetime.now()
+        agora = datetime.now(fuso_brasil)
         eleicoes_ativas = Eleicao.query.filter(
             Eleicao.ativa == True,
             Eleicao.data_inicio <= agora,
@@ -751,8 +802,18 @@ def admin():
         for hora, total in heatmap:
             heatmap_data[int(hora)] = total
 
-        # Últimos votos
+        # Últimos votos (com conversão de fuso horário)
         ultimos_votos = query_votos.order_by(Voto.data_voto.desc()).limit(10).all()
+        ultimos_votos_convertidos = []
+        for voto in ultimos_votos:
+            if voto.data_voto.tzinfo is None:
+                voto.data_voto = pytz.utc.localize(voto.data_voto)
+            voto_convertido = {
+                'data_voto': voto.data_voto.astimezone(fuso_brasil),
+                'filial': voto.filial,
+                'candidato': voto.candidato
+            }
+            ultimos_votos_convertidos.append(voto_convertido)
 
         # Filiais com maior participação
         filiais_participacao = db.session.query(
@@ -780,7 +841,7 @@ def admin():
         # Votos por hora (média)
         votos_por_hora = round(total_votos / 24, 1) if total_votos > 0 else 0
 
-        # Votos por dia (média) - NOVO CÁLCULO ADICIONADO
+        # Votos por dia (média)
         dias_eleicao = 1  # Valor padrão para evitar divisão por zero
         if eleicao_id:
             eleicao = Eleicao.query.get(eleicao_id)
@@ -789,23 +850,21 @@ def admin():
         votos_por_dia = round(total_votos / dias_eleicao, 1) if total_votos > 0 else 0
 
         # Calcular máximos para as barras de progresso
-        # Máximo de votos por hora
         max_votos_hora_result = db.session.query(
             db.func.count(Voto.id)
         ).filter(
             db.func.strftime('%H', Voto.data_voto) == db.func.strftime('%H', datetime.now())
         ).scalar() or 1
 
-        max_votos_hora = max(max_votos_hora_result, 1)  # Garante no mínimo 1
+        max_votos_hora = max(max_votos_hora_result, 1)
 
-        # Máximo de votos por dia
         max_votos_dia_result = db.session.query(
             db.func.count(Voto.id)
         ).filter(
             db.func.date(Voto.data_voto) == db.func.date(datetime.now())
         ).scalar() or 1
 
-        max_votos_dia = max(max_votos_dia_result, 1)  # Garante no mínimo 1
+        max_votos_dia = max(max_votos_dia_result, 1)
 
         # Obter todas eleições, filiais e candidatos para os dropdowns
         todas_eleicoes = Eleicao.query.order_by(Eleicao.data_inicio.desc()).all()
@@ -825,11 +884,11 @@ def admin():
             timeline_labels=[t[0] for t in timeline],
             timeline_data=[t[1] for t in timeline],
             heatmap_data=heatmap_data,
-            ultimos_votos=ultimos_votos,
+            ultimos_votos=ultimos_votos_convertidos,  # Usando os votos convertidos
             filiais_participacao=filiais_participacao,
             percentual_participacao=percentual_participacao,
             votos_por_hora=votos_por_hora,
-            votos_por_dia=votos_por_dia,  # Variável adicionada
+            votos_por_dia=votos_por_dia,
             max_votos_hora=max_votos_hora,
             max_votos_dia=max_votos_dia,
             todas_eleicoes=todas_eleicoes,
@@ -1035,22 +1094,37 @@ def gerenciar_eleicoes():
             data_inicio = datetime.strptime(form.data_inicio.data, '%Y-%m-%dT%H:%M')
             data_fim = datetime.strptime(form.data_fim.data, '%Y-%m-%dT%H:%M')
 
-            eleicao = Eleicao(
-                titulo=form.titulo.data,
-                descricao=form.descricao.data,
-                data_inicio=data_inicio,
-                data_fim=data_fim
-            )
-            db.session.add(eleicao)
-            db.session.commit()
+            # Verificar se é uma edição
+            eleicao_id = request.form.get('eleicao_id')
+            if eleicao_id:
+                eleicao = Eleicao.query.get(eleicao_id)
+                if eleicao:
+                    eleicao.titulo = form.titulo.data
+                    eleicao.descricao = form.descricao.data
+                    eleicao.data_inicio = data_inicio
+                    eleicao.data_fim = data_fim
+                    registrar_log(f"Eleição {form.titulo.data} atualizada", session['user_id'])
+                    flash("Eleição atualizada com sucesso!", "success")
+                else:
+                    flash("Eleição não encontrada", "danger")
+            else:
+                # Nova eleição
+                eleicao = Eleicao(
+                    titulo=form.titulo.data,
+                    descricao=form.descricao.data,
+                    data_inicio=data_inicio,
+                    data_fim=data_fim
+                )
+                db.session.add(eleicao)
+                registrar_log(f"Eleição {form.titulo.data} criada", session['user_id'])
+                flash("Eleição criada com sucesso!", "success")
 
-            registrar_log(f"Eleição {form.titulo.data} criada", session['user_id'])
-            flash("Eleição criada com sucesso!", "success")
+            db.session.commit()
             return redirect(url_for('gerenciar_eleicoes'))
         except Exception as e:
             db.session.rollback()
-            registrar_log(f"Erro ao criar eleição: {str(e)}", session['user_id'])
-            flash(f"Erro ao criar eleição: {str(e)}", "danger")
+            registrar_log(f"Erro ao salvar eleição: {str(e)}", session['user_id'])
+            flash(f"Erro ao salvar eleição: {str(e)}", "danger")
 
     elif request.method == 'POST':
         if 'toggle_eleicao' in request.form:
@@ -1083,6 +1157,68 @@ def gerenciar_eleicoes():
                     registrar_log(f"Erro ao excluir eleição: {str(e)}", session['user_id'])
                     flash(f"Erro ao excluir eleição: {str(e)}", "danger")
 
+
+        elif 'editar_eleicao' in request.form:
+
+            eleicao_id = request.form['editar_eleicao']
+
+            eleicao = Eleicao.query.get(eleicao_id)
+
+            if eleicao:
+                form.titulo.data = eleicao.titulo
+
+                form.descricao.data = eleicao.descricao
+
+                form.data_inicio.data = eleicao.data_inicio.strftime('%Y-%m-%dT%H:%M')
+
+                form.data_fim.data = eleicao.data_fim.strftime('%Y-%m-%dT%H:%M')
+
+                # REFAZ a query que popula eleicoes, pagination e totais
+
+                query = db.session.query(
+
+                    Eleicao.id,
+
+                    Eleicao.titulo,
+
+                    Eleicao.descricao,
+
+                    Eleicao.ativa,
+
+                    db.func.strftime('%d/%m/%Y %H:%M', Eleicao.data_inicio).label('data_inicio'),
+
+                    db.func.strftime('%d/%m/%Y %H:%M', Eleicao.data_fim).label('data_fim'),
+
+                    db.func.strftime('%d/%m/%Y %H:%M', Eleicao.data_criacao).label('data_criacao')
+
+                ).order_by(Eleicao.data_inicio.desc())
+
+                pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+                eleicoes = pagination.items
+
+                total_ativas = sum(1 for e in eleicoes if e[3])  # Índice 3 = ativa
+
+                total_inativas = sum(1 for e in eleicoes if not e[3])
+
+                return render_template(
+
+                    "admin_eleicoes.html",
+
+                    eleicoes=eleicoes,
+
+                    form=form,
+
+                    total_ativas=total_ativas,
+
+                    total_inativas=total_inativas,
+
+                    pagination=pagination,
+
+                    eleicao_editando=eleicao
+
+                )
+
     # Query para eleições com paginação
     query = db.session.query(
         Eleicao.id,
@@ -1106,7 +1242,8 @@ def gerenciar_eleicoes():
         form=form,
         total_ativas=total_ativas,
         total_inativas=total_inativas,
-        pagination=pagination
+        pagination=pagination,
+        eleicao_editando=None  # Ou o objeto eleição quando estiver editando
     )
 
 
