@@ -18,3 +18,11 @@
 2025-07-17 13:24:29,044 - eleicaocipa - INFO - DEBUG VOTO: candidato_id=2 | candidato_id_db=2
 2025-07-17 13:24:29,045 - eleicaocipa - INFO - DEBUG: Consultando CPF 03594280969 na view VIW_CIPA_CPF para filial 'PAC -FILIAL NAVEGANTES' (grupo: PAC)
 2025-07-17 13:24:29,125 - eleicaocipa - INFO - DEBUG: Resultado da consulta para CPF 03594280969: ('03594280969', 'LEANDRO CERUTI MACHADO        ', 'GMO - MATRIZ                             ')
+2025-07-17 13:50:14,867 - eleicaocipa - INFO - DETALHE VOTO: id=8, candidato_id=1 (type=<class 'int'>)
+2025-07-17 13:50:14,867 - eleicaocipa - INFO - DETALHE VOTO: id=7, candidato_id=None (type=<class 'NoneType'>)
+2025-07-17 13:50:14,868 - eleicaocipa - INFO - DETALHE VOTO: id=6, candidato_id=1 (type=<class 'int'>)
+2025-07-17 13:50:14,869 - eleicaocipa - INFO - DETALHE VOTO: id=5, candidato_id=None (type=<class 'NoneType'>)
+2025-07-17 13:50:14,869 - eleicaocipa - INFO - DETALHE VOTO: id=4, candidato_id=1 (type=<class 'int'>)
+2025-07-17 13:50:14,870 - eleicaocipa - INFO - DETALHE VOTO: id=3, candidato_id=1 (type=<class 'int'>)
+2025-07-17 13:50:14,870 - eleicaocipa - INFO - DETALHE VOTO: id=2, candidato_id=None (type=<class 'NoneType'>)
+2025-07-17 13:50:14,870 - eleicaocipa - INFO - DETALHE VOTO: id=1, candidato_id=-1 (type=<class 'int'>)

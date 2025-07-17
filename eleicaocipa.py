@@ -473,6 +473,7 @@ def votar():
     cpf_cadastrado, mensagem = verificar_cpf_funcionario(cpf, filial.nome)
     if not cpf_cadastrado:
         app.logger.info(f"FLASH: Erro: {mensagem}")
+        print(f"FLASH: Erro: {mensagem}")
         flash(f"Erro: {mensagem}", "danger")
         return redirect(url_for("index"))
 
