@@ -1655,5 +1655,29 @@ def create_admin():
     print(f"Admin {username} criado com sucesso!")
 
 
+@app.cli.command('limpar-dados')
+def limpar_dados():
+    """Remove todos os dados do sistema, exceto usuários/admins."""
+    from sqlalchemy import text
+
+    confirm = input("ATENÇÃO: Isso irá apagar TODOS os dados de eleições, votos, candidatos, filiais e logs. Tem certeza? (s/n): ")
+    if confirm.lower() != 's':
+        print("Operação cancelada.")
+        return
+
+    try:
+        # Ordem importa por causa das FK
+        db.session.execute(text('DELETE FROM logs'))
+        db.session.execute(text('DELETE FROM votos'))
+        db.session.execute(text('DELETE FROM candidatos'))
+        db.session.execute(text('DELETE FROM filiais'))
+        db.session.execute(text('DELETE FROM eleicoes'))
+        db.session.commit()
+        print("Dados apagados com sucesso!")
+    except Exception as e:
+        db.session.rollback()
+        print(f"Erro ao limpar dados: {e}")
+
+
 if __name__ == "__main__":
     app.run(debug=True)
