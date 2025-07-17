@@ -436,7 +436,8 @@ def index():
 @app.route('/votar', methods=['POST'])
 @csrf.exempt
 def votar():
-    cpf = request.form["cpf"].strip()
+    # Obter CPF apenas com números
+    cpf = ''.join(filter(str.isdigit, request.form["cpf"]))
     nome = request.form["nome"].strip()
     filial_id = request.form["filial"].strip()
     # Pega o valor correto do candidato (prioriza o botão se houver conflito)
@@ -1726,6 +1727,11 @@ def limpar_dados():
     except Exception as e:
         db.session.rollback()
         print(f"Erro ao limpar dados: {e}")
+
+
+@app.template_filter('so_numeros')
+def so_numeros(value):
+    return ''.join(filter(str.isdigit, str(value)))
 
 
 if __name__ == "__main__":

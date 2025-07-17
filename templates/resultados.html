@@ -414,7 +414,14 @@
             <tbody>
                 {% for cpf, nome, filial, candidato, data, voto_id in detalhes_votos %}
                 <tr>
-                    <td>{{ cpf[:3] }}.{{ cpf[3:6] }}.{{ cpf[6:9] }}-{{ cpf[9:] }}</td>
+                    <td>
+                        {% set cpf_limpo = cpf|replace('.', '')|replace('-', '')|replace(' ', '') %}
+                        {% if cpf_limpo|length == 11 and cpf_limpo.isdigit() %}
+                            {{ cpf_limpo[:3] }}.{{ cpf_limpo[3:6] }}.{{ cpf_limpo[6:9] }}-{{ cpf_limpo[9:] }}
+                        {% else %}
+                            {{ cpf }} {# Mostra o CPF original se não puder ser formatado #}
+                        {% endif %}
+                    </td>
                     <td>{{ nome }}</td>
                     <td>{{ filial }}</td>
                     <td>{{ candidato }}</td>
