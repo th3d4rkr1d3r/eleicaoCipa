@@ -1,13 +1,11 @@
-from flask import Flask, render_template, request, redirect, flash, url_for, session, abort, send_file, jsonify
+from flask import Flask, render_template, request, redirect, flash, url_for, session, abort, send_file, jsonify, make_response, Response
 from flask_wtf.csrf import CSRFProtect
 from flask_bcrypt import Bcrypt
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-from flask import make_response, send_file
 from functools import wraps
-from flask import Response
 import sqlite3
 import os
 import threading
@@ -23,16 +21,12 @@ from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SubmitField, TextAreaField, SelectField
 from wtforms.validators import DataRequired
 import pytz
-from datetime import datetime, timedelta
 from helpers import converter_para_brasil, formatar_data_brasil
-import logging
-import os
 import time
 from werkzeug.utils import secure_filename
 import getpass
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import text
 
 fuso_brasil = pytz.timezone('America/Sao_Paulo')
 data_local = datetime.now(fuso_brasil)
