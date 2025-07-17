@@ -167,14 +167,129 @@
             </div>
         </form>
 
-        <!-- Link para resultados -->
+        <!-- Botão para abrir o FAQ -->
         <div class="mt-3">
-            {% if 'user_id' in session %}
-                <a href="/resultados" class="btn btn-outline-secondary btn-sm">Acessar Resultados</a>
-            {% else %}
-                <a href="/login?next=/resultados" class="btn btn-outline-secondary btn-sm">Acessar Resultados</a>
-            {% endif %}
+            <button type="button" class="btn btn-outline-info w-100" data-bs-toggle="modal" data-bs-target="#faqModal">
+                <i class="fas fa-question-circle"></i> Dúvidas sobre a votação
+            </button>
         </div>
+
+        <!-- Modal FAQ -->
+        <div class="modal fade" id="faqModal" tabindex="-1" aria-labelledby="faqModalLabel" aria-hidden="true">
+          <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title" id="faqModalLabel">Dúvidas Frequentes sobre a Votação</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+              </div>
+              <div class="modal-body">
+                <div class="accordion" id="faqAccordion">
+                  <div class="accordion-item">
+                    <h2 class="accordion-header" id="faq1">
+                      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapse1" aria-expanded="false" aria-controls="faqCollapse1">
+                        Quem pode votar?
+                      </button>
+                    </h2>
+                    <div id="faqCollapse1" class="accordion-collapse collapse" aria-labelledby="faq1" data-bs-parent="#faqAccordion">
+                      <div class="accordion-body">
+                        Todos os funcionários ativos da empresa, devidamente cadastrados na base de funcionários, podem votar. O CPF será validado automaticamente.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="accordion-item">
+                    <h2 class="accordion-header" id="faq2">
+                      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapse2" aria-expanded="false" aria-controls="faqCollapse2">
+                        Como faço para votar em branco ou nulo?
+                      </button>
+                    </h2>
+                    <div id="faqCollapse2" class="accordion-collapse collapse" aria-labelledby="faq2" data-bs-parent="#faqAccordion">
+                      <div class="accordion-body">
+                        Para <b>votar em branco</b>, clique no botão “Voto em Branco” sem selecionar nenhum candidato.<br>
+                        Para <b>votar nulo</b>, clique no botão “Voto Nulo” sem selecionar nenhum candidato.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="accordion-item">
+                    <h2 class="accordion-header" id="faq3">
+                      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapse3" aria-expanded="false" aria-controls="faqCollapse3">
+                        Posso votar mais de uma vez?
+                      </button>
+                    </h2>
+                    <div id="faqCollapse3" class="accordion-collapse collapse" aria-labelledby="faq3" data-bs-parent="#faqAccordion">
+                      <div class="accordion-body">
+                        Não. Cada eleitor pode votar apenas uma vez por eleição. O sistema impede votos duplicados pelo mesmo CPF.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="accordion-item">
+                    <h2 class="accordion-header" id="faq4">
+                      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapse4" aria-expanded="false" aria-controls="faqCollapse4">
+                        Preciso escolher um candidato para votar em branco ou nulo?
+                      </button>
+                    </h2>
+                    <div id="faqCollapse4" class="accordion-collapse collapse" aria-labelledby="faq4" data-bs-parent="#faqAccordion">
+                      <div class="accordion-body">
+                        Não. Para votos em branco ou nulo, basta preencher seu CPF, nome e filial, e clicar no respectivo botão.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="accordion-item">
+                    <h2 class="accordion-header" id="faq5">
+                      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapse5" aria-expanded="false" aria-controls="faqCollapse5">
+                        O que acontece se eu errar meu voto?
+                      </button>
+                    </h2>
+                    <div id="faqCollapse5" class="accordion-collapse collapse" aria-labelledby="faq5" data-bs-parent="#faqAccordion">
+                      <div class="accordion-body">
+                        Após a confirmação, não é possível alterar ou corrigir o voto. Por isso, revise suas escolhas antes de confirmar.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="accordion-item">
+                    <h2 class="accordion-header" id="faq6">
+                      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapse6" aria-expanded="false" aria-controls="faqCollapse6">
+                        Meus dados são confidenciais?
+                      </button>
+                    </h2>
+                    <div id="faqCollapse6" class="accordion-collapse collapse" aria-labelledby="faq6" data-bs-parent="#faqAccordion">
+                      <div class="accordion-body">
+                        Sim. Os dados são utilizados apenas para validar o direito ao voto e garantir a integridade da eleição. O sigilo do voto é garantido.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="accordion-item">
+                    <h2 class="accordion-header" id="faq7">
+                      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapse7" aria-expanded="false" aria-controls="faqCollapse7">
+                        Não encontrei minha filial ou candidato. O que faço?
+                      </button>
+                    </h2>
+                    <div id="faqCollapse7" class="accordion-collapse collapse" aria-labelledby="faq7" data-bs-parent="#faqAccordion">
+                      <div class="accordion-body">
+                        Entre em contato com o RH ou o responsável pela eleição para verificar seu cadastro.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="accordion-item">
+                    <h2 class="accordion-header" id="faq8">
+                      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapse8" aria-expanded="false" aria-controls="faqCollapse8">
+                        Como sei que meu voto foi registrado?
+                      </button>
+                    </h2>
+                    <div id="faqCollapse8" class="accordion-collapse collapse" aria-labelledby="faq8" data-bs-parent="#faqAccordion">
+                      <div class="accordion-body">
+                        Após votar, uma mensagem de confirmação será exibida na tela.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
     </div>
 
     <!-- Bootstrap JS -->
@@ -213,7 +328,7 @@
                     eleicao_id: "{{ candidato.eleicao_id }}",
                     foto: "{{ candidato.foto if candidato.foto else '' }}",
                     filial_id_seq: "{{ candidato.filial_id_seq }}"
-                },
+                }{% if not loop.last %},{% endif %}
                 {% endfor %}
             ];
 
@@ -301,11 +416,11 @@
     </script>
     <script>
         // Exigir candidato apenas ao clicar em Confirmar Voto
-        const form = document.querySelector('form[action="/votar"]');
+        const formConfirmar = document.querySelector('form[action="/votar"]');
         const btnConfirmar = document.getElementById('btnConfirmarVoto');
         const candidatoSelect = document.getElementById('candidatoSelect');
 
-        if (form && btnConfirmar && candidatoSelect) {
+        if (formConfirmar && btnConfirmar && candidatoSelect) {
             btnConfirmar.addEventListener('click', function(e) {
                 if (!candidatoSelect.value) {
                     e.preventDefault();
@@ -323,9 +438,9 @@
     </script>
     <script>
         // Validação customizada frontend
-        const form = document.querySelector('form[action="/votar"]');
-        if (form) {
-            form.addEventListener('submit', function(e) {
+        const formValidacao = document.querySelector('form[action="/votar"]');
+        if (formValidacao) {
+            formValidacao.addEventListener('submit', function(e) {
                 let valid = true;
                 const cpfInput = document.getElementById('cpfInput');
                 const nomeInput = document.getElementById('nomeInput');
@@ -346,7 +461,7 @@
                     nomeInput.classList.remove('is-invalid');
                 }
                 // Chama validação HTML5 padrão também
-                if (!form.checkValidity()) {
+                if (!formValidacao.checkValidity()) {
                     valid = false;
                 }
                 if (!valid) {
@@ -355,5 +470,11 @@
             });
         }
     </script>
+    <footer style="position: fixed; bottom: 0; width: 100%; background: #f8f9fa; border-top: 1px solid #dee2e6; padding: 8px 0; z-index: 9999; font-size: 0.9em;">
+      <div class="container d-flex justify-content-between align-items-center">
+        <span class="text-muted">© GMO Facilities. Todos os direitos reservados.</span>
+        <a href="/login" class="text-muted text-decoration-none" style="font-size: 0.95em;">Acesso restrito</a>
+      </div>
+    </footer>
 </body>
 </html>
