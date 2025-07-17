@@ -259,9 +259,12 @@ def registrar_log(acao, usuario_id=None):
 
 def tocar_som():
     try:
-        caminho_som = os.path.join(app.static_folder, "urna.mp3")
-        if os.path.exists(caminho_som):
-            threading.Thread(target=playsound, args=(caminho_som,)).start()
+        import os
+        # Só toca som se estiver em desenvolvimento/local
+        if os.environ.get('FLASK_ENV') == 'development':
+            caminho_som = os.path.join(app.static_folder, "urna.mp3")
+            if os.path.exists(caminho_som):
+                threading.Thread(target=playsound, args=(caminho_som,)).start()
     except Exception as e:
         app.logger.error(f"Erro ao reproduzir som: {str(e)}")
 
