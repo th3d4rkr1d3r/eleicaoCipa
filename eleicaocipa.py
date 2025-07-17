@@ -1480,7 +1480,7 @@ def exportar_dados(tipo):
                 Voto.nome,
                 Filial.nome.label('filial'),
                 Candidato.nome.label('candidato'),
-                db.func.strftime('%d/%m/%Y %H:%M', Voto.data_voto).label('data'),
+                Voto.data_voto,  # Pega o datetime bruto
                 Eleicao.titulo.label('eleicao')
             ).join(Candidato, Voto.candidato_id == Candidato.id) \
                 .join(Filial, Voto.filial_id == Filial.id) \
@@ -1498,11 +1498,19 @@ def exportar_dados(tipo):
                 writer = csv.writer(buffer, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
 
                 # Escreva cabeçalho
-                writer.writerow(['CPF', 'Nome Eleitor', 'Filial', 'Candidato', 'Data/Hora', 'Eleição'])
+                writer.writerow(['CPF', 'Nome Eleitor', 'Filial', 'Candidato', 'Data/Hora (Brasília)', 'Eleição'])
 
                 # Escreva dados
-                for linha in dados:
-                    writer.writerow(linha)
+                for cpf, nome, filial, candidato, data_voto, eleicao in dados:
+                    # Converter para fuso de Brasília
+                    if data_voto:
+                        if data_voto.tzinfo is None:
+                            data_voto = pytz.utc.localize(data_voto)
+                        data_brasil = data_voto.astimezone(pytz.timezone('America/Sao_Paulo'))
+                        data_str = data_brasil.strftime('%d/%m/%Y %H:%M')
+                    else:
+                        data_str = ''
+                    writer.writerow([cpf, nome, filial, candidato, data_str, eleicao])
 
                 buffer.seek(0)
                 yield buffer.getvalue()
