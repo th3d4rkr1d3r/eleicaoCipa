@@ -306,13 +306,17 @@ def verificar_cpf_funcionario(cpf, filial_nome):
         else:
             grupo_filial = None
 
+        cpf_numeros = ''.join(filter(str.isdigit, cpf))
+        app.logger.info(f"DEBUG: Consultando CPF {cpf_numeros} na view VIW_CIPA_CPF para filial '{filial_nome}' (grupo: {grupo_filial})")
+
         query = text("""
         SELECT RA_CIC, RA_NOME, RA_FILIAL 
         FROM VIW_CIPA_CPF 
         WHERE RA_CIC = :cpf
         """)
 
-        result = session.execute(query, {'cpf': cpf}).fetchone()
+        result = session.execute(query, {'cpf': cpf_numeros}).fetchone()
+        app.logger.info(f"DEBUG: Resultado da consulta para CPF {cpf_numeros}: {result}")
         session.close()
 
         if not result:
@@ -468,6 +472,7 @@ def votar():
     # Verificar se o CPF é de um funcionário do grupo correto
     cpf_cadastrado, mensagem = verificar_cpf_funcionario(cpf, filial.nome)
     if not cpf_cadastrado:
+        app.logger.info(f"FLASH: Erro: {mensagem}")
         flash(f"Erro: {mensagem}", "danger")
         return redirect(url_for("index"))
 
