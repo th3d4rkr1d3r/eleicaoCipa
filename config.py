@@ -18,7 +18,7 @@ class Config:
     SQL_DATABASE = os.getenv('SQL_DATABASE', 'DW_GMO')
     SQL_USERNAME = os.getenv('SQL_USERNAME', 'BI_GMO')
     SQL_PASSWORD = os.getenv('SQL_PASSWORD', 'GMOBI#2022')
-    SQL_DRIVER = os.getenv('SQL_DRIVER', 'ODBC Driver 18 for SQL Server')
+    SQL_DRIVER = os.getenv('SQL_DRIVER', 'ODBC Driver 17 for SQL Server')
 
     # String de conexão para o SQL Server
     SQL_SERVER_URI = f"mssql+pyodbc://{SQL_USERNAME}:{SQL_PASSWORD}@{SQL_SERVER}/{SQL_DATABASE}?driver={SQL_DRIVER.replace(' ', '+')}&TrustServerCertificate=yes"

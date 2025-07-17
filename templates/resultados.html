@@ -222,8 +222,8 @@
                     {% endif %}
 
                     <!-- Cards de Estatísticas -->
-                    <div class="row">
-                        <div class="col-lg-4 col-6">
+                    <div class="row g-2">
+                        <div class="col-12 col-md-4">
                             <div class="small-box bg-info">
                                 <div class="inner">
                                     <h3>{{ resultados|length }}</h3>
@@ -234,7 +234,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="col-lg-4 col-6">
+                        <div class="col-12 col-md-4">
                             <div class="small-box bg-success">
                                 <div class="inner">
                                     <h3>{{ total_votos }}</h3>
@@ -245,7 +245,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="col-lg-4 col-6">
+                        <div class="col-12 col-md-4">
                             <div class="small-box bg-warning">
                                 <div class="inner">
                                     <h3>{{ filiais|length }}</h3>
@@ -254,6 +254,20 @@
                                 <div class="icon">
                                     <i class="fas fa-building"></i>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Votos em Branco e Nulo -->
+                    <div class="row mb-3 g-2">
+                        <div class="col-12 col-md-6">
+                            <div class="alert alert-secondary text-center mb-2">
+                                <strong>Votos em Branco:</strong> {{ votos_branco }}
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="alert alert-danger text-center mb-2">
+                                <strong>Votos Nulos:</strong> {{ votos_nulo }}
                             </div>
                         </div>
                     </div>

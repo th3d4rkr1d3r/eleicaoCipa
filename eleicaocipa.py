@@ -211,7 +211,7 @@ class Voto(db.Model):
     cpf = db.Column(db.String(11), nullable=False)
     nome = db.Column(db.String(100), nullable=False)  # Novo campo
     filial_id = db.Column(db.Integer, db.ForeignKey('filiais.id'), nullable=False)
-    candidato_id = db.Column(db.Integer, db.ForeignKey('candidatos.id'), nullable=False)
+    candidato_id = db.Column(db.Integer, db.ForeignKey('candidatos.id'), nullable=True)
     eleicao_id = db.Column(db.Integer, db.ForeignKey('eleicoes.id'), nullable=False)
     data_voto = db.Column(db.DateTime, default=db.func.current_timestamp())
     filial = db.relationship('Filial', backref='votos')
@@ -435,13 +435,31 @@ def votar():
     cpf = request.form["cpf"].strip()
     nome = request.form["nome"].strip()
     filial_id = request.form["filial"].strip()
-    candidato_id = request.form["candidato"].strip()
+    # Pega o valor correto do candidato (prioriza o botão se houver conflito)
+    candidato_id = request.form.get("candidato", "").strip()
+    if not candidato_id and "candidato" in request.form and isinstance(request.form.getlist("candidato"), list):
+        candidato_id_list = request.form.getlist("candidato")
+        if candidato_id_list:
+            candidato_id = candidato_id_list[-1].strip()
     eleicao_id = request.form.get("eleicao_id", "").strip()
 
-    if not all([cpf, nome, filial_id, candidato_id, eleicao_id]):
+    # Permitir voto em branco (candidato_id vazio) ou nulo (candidato_id = -1)
+    if candidato_id == "":
+        candidato_id_db = None  # Voto em branco
+    elif candidato_id == "-1":
+        candidato_id_db = -1    # Voto nulo
+    else:
+        try:
+            candidato_id_db = int(candidato_id)
+        except Exception:
+            candidato_id_db = None
+    app.logger.info(f"DEBUG VOTO: candidato_id={candidato_id} | candidato_id_db={candidato_id_db}")
+
+    if not all([cpf, nome, filial_id, eleicao_id]):
         flash("Todos os campos são obrigatórios!", "danger")
         return redirect(url_for("index"))
-        # Obter o nome da filial selecionada
+    # Não exigir candidato_id para voto em branco/nulo
+
     filial = Filial.query.get(filial_id)
     if not filial:
         flash("Filial inválida!", "danger")
@@ -459,18 +477,6 @@ def votar():
         flash(f"Erro: {mensagem}", "danger")
         return redirect(url_for("index"))
 
-    # Obter o nome da filial selecionada
-    filial = Filial.query.get(filial_id)
-    if not filial:
-        flash("Filial inválida!", "danger")
-        return redirect(url_for("index"))
-
-    # Verificar se o CPF é de um funcionário da filial
-    cpf_cadastrado, mensagem = verificar_cpf_funcionario(cpf, filial.nome)
-    if not cpf_cadastrado:
-        flash(f"Erro: {mensagem}", "danger")
-        return redirect(url_for("index"))
-
     try:
         # Verificar se o CPF já votou nesta eleição
         if Voto.query.filter_by(cpf=cpf, eleicao_id=eleicao_id).first():
@@ -481,17 +487,24 @@ def votar():
             cpf=cpf,
             nome=nome,
             filial_id=filial_id,
-            candidato_id=candidato_id,
+            candidato_id=candidato_id_db,
             eleicao_id=eleicao_id,
             data_voto=datetime.utcnow()  # Usar UTC para armazenamento interno
         )
 
         db.session.add(novo_voto)
         db.session.commit()
-
-        registrar_log(f"Voto registrado na eleição {eleicao_id}", session.get('user_id'))
-        flash("Voto registrado com sucesso!", "success")
+        app.logger.info(f"VOTO SALVO: id={novo_voto.id}, candidato_id={novo_voto.candidato_id} (type={type(novo_voto.candidato_id)})")
         tocar_som()
+        if candidato_id_db is None:
+            registrar_log(f"Voto em branco registrado na eleição {eleicao_id}", session.get('user_id'))
+            flash("Voto em branco registrado com sucesso!", "success")
+        elif candidato_id_db == -1:
+            registrar_log(f"Voto nulo registrado na eleição {eleicao_id}", session.get('user_id'))
+            flash("Voto nulo registrado com sucesso!", "success")
+        else:
+            registrar_log(f"Voto registrado na eleição {eleicao_id}", session.get('user_id'))
+            flash("Voto registrado com sucesso!", "success")
     except Exception as e:
         db.session.rollback()
         registrar_log(f"Erro ao registrar voto: {str(e)}")
@@ -568,9 +581,10 @@ def resultados():
         Voto.cpf,
         Voto.nome,
         Filial.nome.label('filial'),
+        Voto.candidato_id,
         Candidato.nome.label('candidato'),
         Voto.data_voto
-    ).join(Candidato, Voto.candidato_id == Candidato.id
+    ).outerjoin(Candidato, Voto.candidato_id == Candidato.id
            ).join(Filial, Voto.filial_id == Filial.id
                   ).join(Eleicao, Voto.eleicao_id == Eleicao.id)
 
@@ -586,17 +600,26 @@ def resultados():
 
     # Processar detalhes dos votos (mantenha como tuplas)
     detalhes_votos = []
-    for voto_id, cpf, nome, filial, candidato, data_voto in detalhes_query.order_by(Voto.data_voto.desc()).all():
+    for voto_id, cpf, nome, filial, candidato_id, candidato_nome, data_voto in detalhes_query.order_by(Voto.data_voto.desc()).all():
         # Converter explicitamente para o fuso do Brasil
         if data_voto.tzinfo is None:
             data_voto = pytz.utc.localize(data_voto)  # Assumir UTC se não tiver timezone
         dt_brasil = data_voto.astimezone(pytz.timezone('America/Sao_Paulo'))
 
+        app.logger.info(f"DETALHE VOTO: id={voto_id}, candidato_id={candidato_id} (type={type(candidato_id)})")
+
+        if candidato_id is None:
+            candidato_label = 'Branco'
+        elif str(candidato_id) == '-1':
+            candidato_label = 'Nulo'
+        else:
+            candidato_label = candidato_nome
+
         detalhes_votos.append((
             cpf,
             nome,
             filial,
-            candidato,
+            candidato_label,
             formatar_data_brasil(dt_brasil),
             voto_id
         ))
@@ -614,6 +637,24 @@ def resultados():
 
     total_votos = total_query.scalar() or 0
 
+    # Calcular votos em branco e nulo
+    votos_branco_query = db.session.query(db.func.count(Voto.id)).join(Eleicao, Voto.eleicao_id == Eleicao.id)
+    votos_nulo_query = db.session.query(db.func.count(Voto.id)).join(Eleicao, Voto.eleicao_id == Eleicao.id)
+    if eleicao_id:
+        votos_branco_query = votos_branco_query.filter(Eleicao.id == eleicao_id)
+        votos_nulo_query = votos_nulo_query.filter(Eleicao.id == eleicao_id)
+    if filial_filtro != 'Todas Filiais':
+        votos_branco_query = votos_branco_query.join(Filial, Voto.filial_id == Filial.id).filter(Filial.nome == filial_filtro)
+        votos_nulo_query = votos_nulo_query.join(Filial, Voto.filial_id == Filial.id).filter(Filial.nome == filial_filtro)
+    if data_inicio:
+        votos_branco_query = votos_branco_query.filter(db.func.date(Voto.data_voto) >= data_inicio)
+        votos_nulo_query = votos_nulo_query.filter(db.func.date(Voto.data_voto) >= data_inicio)
+    if data_fim:
+        votos_branco_query = votos_branco_query.filter(db.func.date(Voto.data_voto) <= data_fim)
+        votos_nulo_query = votos_nulo_query.filter(db.func.date(Voto.data_voto) <= data_fim)
+    votos_branco = votos_branco_query.filter(Voto.candidato_id == None).scalar() or 0
+    votos_nulo = votos_nulo_query.filter(Voto.candidato_id == -1).scalar() or 0
+
     # Obter lista de filiais para o dropdown
     filiais = [f[0] for f in db.session.query(Filial.nome).filter_by(eleicao_id=eleicao_id).all()] if eleicao_id else []
 
@@ -625,6 +666,8 @@ def resultados():
         eleicoes=eleicoes,
         eleicao_selecionada=int(eleicao_id) if eleicao_id else None,
         total_votos=total_votos,
+        votos_branco=votos_branco,
+        votos_nulo=votos_nulo,
         filial_filtro=filial_filtro,
         data_inicio=data_inicio or '',
         data_fim=data_fim or ''
@@ -1471,38 +1514,33 @@ def visualizar_logs():
 def exportar_dados(tipo):
     if tipo == 'votos':
         try:
-            # 1. Obtenha os parâmetros
             eleicao_id = request.args.get('eleicao', '')
-
-            # 2. Construa a query de forma segura
             query = db.session.query(
                 Voto.cpf,
                 Voto.nome,
                 Filial.nome.label('filial'),
+                Voto.candidato_id,
                 Candidato.nome.label('candidato'),
-                Voto.data_voto,  # Pega o datetime bruto
+                Voto.data_voto,
                 Eleicao.titulo.label('eleicao')
-            ).join(Candidato, Voto.candidato_id == Candidato.id) \
+            ).outerjoin(Candidato, Voto.candidato_id == Candidato.id) \
                 .join(Filial, Voto.filial_id == Filial.id) \
                 .join(Eleicao, Voto.eleicao_id == Eleicao.id)
-
             if eleicao_id:
                 query = query.filter(Eleicao.id == eleicao_id)
-
             dados = query.all()
-
-            # 3. Crie um gerador de CSV em memória
             def gerar_csv():
                 buffer = io.StringIO()
-                buffer.write('\ufeff')  # BOM para UTF-8
+                buffer.write('\ufeff')
                 writer = csv.writer(buffer, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-
-                # Escreva cabeçalho
                 writer.writerow(['CPF', 'Nome Eleitor', 'Filial', 'Candidato', 'Data/Hora (Brasília)', 'Eleição'])
-
-                # Escreva dados
-                for cpf, nome, filial, candidato, data_voto, eleicao in dados:
-                    # Converter para fuso de Brasília
+                for cpf, nome, filial, candidato_id, candidato_nome, data_voto, eleicao in dados:
+                    if candidato_id is None:
+                        candidato_label = 'Branco'
+                    elif candidato_id == -1:
+                        candidato_label = 'Nulo'
+                    else:
+                        candidato_label = candidato_nome
                     if data_voto:
                         if data_voto.tzinfo is None:
                             data_voto = pytz.utc.localize(data_voto)
@@ -1510,13 +1548,10 @@ def exportar_dados(tipo):
                         data_str = data_brasil.strftime('%d/%m/%Y %H:%M')
                     else:
                         data_str = ''
-                    writer.writerow([cpf, nome, filial, candidato, data_str, eleicao])
-
+                    writer.writerow([cpf, nome, filial, candidato_label, data_str, eleicao])
                 buffer.seek(0)
                 yield buffer.getvalue()
                 buffer.close()
-
-            # 4. Retorne a resposta com os headers corretos
             response = Response(
                 gerar_csv(),
                 mimetype='text/csv; charset=utf-8',
@@ -1526,12 +1561,10 @@ def exportar_dados(tipo):
                 }
             )
             return response
-
         except Exception as e:
             app.logger.error(f"ERRO NA EXPORTAÇÃO: {str(e)}")
             flash("Falha ao gerar arquivo CSV. Verifique os logs.", "danger")
             return redirect(url_for('resultados'))
-
     abort(404)
 
 
@@ -1620,7 +1653,17 @@ def anular_voto(voto_id):
         voto = Voto.query.get_or_404(voto_id)
 
         # Registrar log antes de deletar
-        registrar_log(f"Voto anulado - CPF: {voto.cpf}, Candidato: {voto.candidato.nome}", session['user_id'])
+        if voto.candidato is None:
+            if voto.candidato_id is None:
+                candidato_nome = "Branco"
+            elif voto.candidato_id == -1:
+                candidato_nome = "Nulo"
+            else:
+                candidato_nome = "Desconhecido"
+        else:
+            candidato_nome = voto.candidato.nome
+
+        registrar_log(f"Voto anulado - CPF: {voto.cpf}, Candidato: {candidato_nome}", session['user_id'])
 
         db.session.delete(voto)
         db.session.commit()

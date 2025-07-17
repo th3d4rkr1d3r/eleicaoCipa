@@ -125,15 +125,19 @@
             <input type="hidden" name="eleicao_id" id="eleicaoId" value="{{ eleicao_ativa.id if eleicao_ativa else '' }}">
 
             <div class="mb-3">
-    <input type="text" name="cpf" class="form-control"
+    <input type="text" name="cpf" class="form-control" id="cpfInput"
            placeholder="Digite seu CPF" required
-           oninput="this.value = this.value.replace(/[^0-9]/g, '')"
-           maxlength="11">
+           maxlength="14" pattern="\d{3}\.\d{3}\.\d{3}-\d{2}|\d{11}"
+           oninput="this.value = this.value.replace(/[^0-9]/g, '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, function(_,a,b,c,d){return a+'.'+b+'.'+c+'-'+d;}).substr(0,14)"
+           >
     <small class="text-muted">Apenas números (11 dígitos). Seu CPF será validado contra nossa base de funcionários.</small>
+    <div class="invalid-feedback">Digite um CPF válido (11 dígitos).</div>
 </div>
             <div class="mb-3">
-                <input type="text" name="nome" class="form-control"
-                    placeholder="Digite seu nome completo" required>
+                <input type="text" name="nome" class="form-control" id="nomeInput"
+                    placeholder="Digite seu nome completo" required minlength="5" maxlength="100" pattern="[A-Za-zÀ-ÿ ']+">
+                <small class="text-muted">Nome completo (apenas letras e espaços, mínimo 5 caracteres).</small>
+                <div class="invalid-feedback">Digite um nome válido (apenas letras e pelo menos 5 caracteres).</div>
             </div>
 
             <select name="filial" class="form-select" id="filialSelect" required>
@@ -145,14 +149,22 @@
                 {% endfor %}
             </select>
 
-            <select name="candidato" class="form-select" id="candidatoSelect" required disabled>
+            <select name="candidato" class="form-select" id="candidatoSelect" disabled>
                 <option value="">Escolha um candidato</option>
                 <!-- Os candidatos serão preenchidos dinamicamente -->
             </select>
 
-            <button type="submit" class="btn btn-success w-100 py-2" {% if not eleicao_ativa %}disabled{% endif %}>
+            <button type="submit" class="btn btn-success w-100 py-2" id="btnConfirmarVoto" {% if not eleicao_ativa %}disabled{% endif %}>
                 Confirmar Voto
             </button>
+            <div class="d-flex flex-column flex-md-row gap-2 mt-2">
+                <button type="submit" class="btn btn-outline-secondary w-100 w-md-50" name="candidato" value="">
+                    Voto em Branco
+                </button>
+                <button type="submit" class="btn btn-outline-danger w-100 w-md-50" name="candidato" value="-1">
+                    Voto Nulo
+                </button>
+            </div>
         </form>
 
         <!-- Link para resultados -->
@@ -286,6 +298,62 @@
                 {% endif %}
             {% endwith %}
         });
+    </script>
+    <script>
+        // Exigir candidato apenas ao clicar em Confirmar Voto
+        const form = document.querySelector('form[action="/votar"]');
+        const btnConfirmar = document.getElementById('btnConfirmarVoto');
+        const candidatoSelect = document.getElementById('candidatoSelect');
+
+        if (form && btnConfirmar && candidatoSelect) {
+            btnConfirmar.addEventListener('click', function(e) {
+                if (!candidatoSelect.value) {
+                    e.preventDefault();
+                    candidatoSelect.classList.add('is-invalid');
+                    candidatoSelect.focus();
+                } else {
+                    candidatoSelect.classList.remove('is-invalid');
+                }
+            });
+            // Remover erro ao selecionar
+            candidatoSelect.addEventListener('change', function() {
+                candidatoSelect.classList.remove('is-invalid');
+            });
+        }
+    </script>
+    <script>
+        // Validação customizada frontend
+        const form = document.querySelector('form[action="/votar"]');
+        if (form) {
+            form.addEventListener('submit', function(e) {
+                let valid = true;
+                const cpfInput = document.getElementById('cpfInput');
+                const nomeInput = document.getElementById('nomeInput');
+                // CPF: 000.000.000-00 ou 11 dígitos
+                const cpfVal = cpfInput.value.replace(/\D/g, '');
+                if (cpfVal.length !== 11) {
+                    cpfInput.classList.add('is-invalid');
+                    valid = false;
+                } else {
+                    cpfInput.classList.remove('is-invalid');
+                }
+                // Nome: pelo menos 5 letras, só letras e espaços
+                const nomeVal = nomeInput.value.trim();
+                if (nomeVal.length < 5 || /[^A-Za-zÀ-ÿ' ]/.test(nomeVal)) {
+                    nomeInput.classList.add('is-invalid');
+                    valid = false;
+                } else {
+                    nomeInput.classList.remove('is-invalid');
+                }
+                // Chama validação HTML5 padrão também
+                if (!form.checkValidity()) {
+                    valid = false;
+                }
+                if (!valid) {
+                    e.preventDefault();
+                }
+            });
+        }
     </script>
 </body>
 </html>
