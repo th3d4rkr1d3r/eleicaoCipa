@@ -121,7 +121,7 @@
             <div class="candidate-branch" id="candidateBranch"></div>
         </div>
 
-        <form action="/votar" method="POST">
+        <form id="formVotar" action="/votar" method="POST" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="eleicao_id" id="eleicaoId" value="{{ eleicao_ativa.id if eleicao_ativa else '' }}">
 
@@ -154,18 +154,47 @@
                 <!-- Os candidatos serão preenchidos dinamicamente -->
             </select>
 
-            <button type="submit" class="btn btn-success w-100 py-2" id="btnConfirmarVoto" {% if not eleicao_ativa %}disabled{% endif %}>
+            <button type="button" class="btn btn-success w-100 py-2" id="btnConfirmarVoto" {% if not eleicao_ativa %}disabled{% endif %}>
                 Confirmar Voto
             </button>
             <div class="d-flex flex-column flex-md-row gap-2 mt-2">
-                <button type="submit" class="btn btn-outline-secondary w-100 w-md-50" name="candidato" value="">
+                <button type="button" class="btn btn-outline-secondary w-100 w-md-50" id="btnVotoBranco">
                     Voto em Branco
                 </button>
-                <button type="submit" class="btn btn-outline-danger w-100 w-md-50" name="candidato" value="-1">
+                <button type="button" class="btn btn-outline-danger w-100 w-md-50" id="btnVotoNulo">
                     Voto Nulo
                 </button>
             </div>
         </form>
+
+        <!-- Modal de Câmera -->
+        <div class="modal fade" id="cameraModal" tabindex="-1" aria-labelledby="cameraModalLabel" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title" id="cameraModalLabel">Capturar Foto para Confirmar Voto</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <div class="ratio ratio-4x3 mb-2" style="background:#000;">
+                    <video id="cameraVideo" autoplay playsinline style="width:100%;height:100%;object-fit:cover;"></video>
+                </div>
+                <canvas id="cameraCanvas" style="display:none;"></canvas>
+                <div id="photoPreview" class="text-center" style="display:none;">
+                    <img id="photoImg" alt="Prévia" style="max-width:100%;border:1px solid #ddd;border-radius:6px;"/>
+                </div>
+              </div>
+              <div class="modal-footer d-flex justify-content-between">
+                <div class="text-start small text-muted">Requer HTTPS em celulares para acesso à câmera.</div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-secondary" id="btnResetarFoto" style="display:none;">Refazer</button>
+                    <button type="button" class="btn btn-primary" id="btnTirarFoto">Tirar Foto</button>
+                    <button type="button" class="btn btn-success" id="btnEnviarVoto" disabled>Enviar Voto</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <!-- Botão para abrir o FAQ -->
         <div class="mt-3">
@@ -415,26 +444,152 @@
         });
     </script>
     <script>
-        // Exigir candidato apenas ao clicar em Confirmar Voto
-        const formConfirmar = document.querySelector('form[action="/votar"]');
+        // Fluxo de confirmação com foto obrigatória
+        const formConfirmar = document.getElementById('formVotar');
         const btnConfirmar = document.getElementById('btnConfirmarVoto');
+        const btnVotoBranco = document.getElementById('btnVotoBranco');
+        const btnVotoNulo = document.getElementById('btnVotoNulo');
         const candidatoSelect = document.getElementById('candidatoSelect');
+        const cameraModalEl = document.getElementById('cameraModal');
+        const cameraModal = new bootstrap.Modal(cameraModalEl);
+        const video = document.getElementById('cameraVideo');
+        const canvas = document.getElementById('cameraCanvas');
+        const photoPreview = document.getElementById('photoPreview');
+        const photoImg = document.getElementById('photoImg');
+        const btnTirarFoto = document.getElementById('btnTirarFoto');
+        const btnEnviarVoto = document.getElementById('btnEnviarVoto');
+        const btnResetarFoto = document.getElementById('btnResetarFoto');
+        let mediaStream = null;
+        let fotoBlob = null;
 
-        if (formConfirmar && btnConfirmar && candidatoSelect) {
-            btnConfirmar.addEventListener('click', function(e) {
-                if (!candidatoSelect.value) {
-                    e.preventDefault();
-                    candidatoSelect.classList.add('is-invalid');
-                    candidatoSelect.focus();
-                } else {
-                    candidatoSelect.classList.remove('is-invalid');
-                }
-            });
-            // Remover erro ao selecionar
-            candidatoSelect.addEventListener('change', function() {
-                candidatoSelect.classList.remove('is-invalid');
-            });
+        async function abrirCamera() {
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+                video.srcObject = mediaStream;
+            } catch (err) {
+                alert('Não foi possível acessar a câmera. Verifique permissões e HTTPS.');
+                console.error(err);
+            }
         }
+
+        function pararCamera() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(t => t.stop());
+                mediaStream = null;
+            }
+        }
+
+        btnConfirmar.addEventListener('click', function() {
+            if (!candidatoSelect.value) {
+                candidatoSelect.classList.add('is-invalid');
+                candidatoSelect.focus();
+                return;
+            }
+            candidatoSelect.classList.remove('is-invalid');
+            fotoBlob = null;
+            photoPreview.style.display = 'none';
+            btnEnviarVoto.disabled = true;
+            btnResetarFoto.style.display = 'none';
+            cameraModal.show();
+            abrirCamera();
+        });
+
+        function validarCamposBasicos() {
+            const cpfInput = document.getElementById('cpfInput');
+            const nomeInput = document.getElementById('nomeInput');
+            const filialSelect = document.getElementById('filialSelect');
+            const cpfVal = (cpfInput.value || '').replace(/\D/g, '');
+            let ok = true;
+            if (cpfVal.length !== 11) { cpfInput.classList.add('is-invalid'); ok = false; } else { cpfInput.classList.remove('is-invalid'); }
+            const nomeVal = (nomeInput.value || '').trim();
+            if (nomeVal.length < 5 || /[^A-Za-zÀ-ÿ' ]/.test(nomeVal)) { nomeInput.classList.add('is-invalid'); ok = false; } else { nomeInput.classList.remove('is-invalid'); }
+            if (!filialSelect.value) { filialSelect.classList.add('is-invalid'); ok = false; } else { filialSelect.classList.remove('is-invalid'); }
+            return ok;
+        }
+
+        btnVotoBranco.addEventListener('click', function() {
+            if (!validarCamposBasicos()) return;
+            candidatoSelect.value = '';
+            candidatoSelect.classList.remove('is-invalid');
+            fotoBlob = null;
+            photoPreview.style.display = 'none';
+            btnEnviarVoto.disabled = true;
+            btnResetarFoto.style.display = 'none';
+            cameraModal.show();
+            abrirCamera();
+        });
+
+        btnVotoNulo.addEventListener('click', function() {
+            if (!validarCamposBasicos()) return;
+            // garantir opção -1 no envio
+            const optNulo = [...candidatoSelect.options].find(o => o.value === '-1');
+            if (!optNulo) {
+                const o = document.createElement('option');
+                o.value = '-1';
+                o.textContent = 'Voto Nulo';
+                candidatoSelect.appendChild(o);
+            }
+            candidatoSelect.value = '-1';
+            candidatoSelect.classList.remove('is-invalid');
+            fotoBlob = null;
+            photoPreview.style.display = 'none';
+            btnEnviarVoto.disabled = true;
+            btnResetarFoto.style.display = 'none';
+            cameraModal.show();
+            abrirCamera();
+        });
+
+        cameraModalEl.addEventListener('hidden.bs.modal', () => {
+            pararCamera();
+        });
+
+        btnTirarFoto.addEventListener('click', function() {
+            const w = video.videoWidth || 640;
+            const h = video.videoHeight || 480;
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, w, h);
+            canvas.toBlob(function(blob) {
+                if (!blob) return;
+                fotoBlob = blob;
+                const url = URL.createObjectURL(blob);
+                photoImg.src = url;
+                photoPreview.style.display = 'block';
+                btnEnviarVoto.disabled = false;
+                btnResetarFoto.style.display = 'inline-block';
+            }, 'image/jpeg', 0.9);
+        });
+
+        btnResetarFoto.addEventListener('click', function() {
+            fotoBlob = null;
+            photoPreview.style.display = 'none';
+            btnEnviarVoto.disabled = true;
+            btnResetarFoto.style.display = 'none';
+        });
+
+        btnEnviarVoto.addEventListener('click', async function() {
+            if (!fotoBlob) return;
+            const formData = new FormData(formConfirmar);
+            formData.append('foto', fotoBlob, 'voto.jpg');
+            try {
+                const resp = await fetch('/votar', {
+                    method: 'POST',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    body: formData
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (resp.ok && data.ok) {
+                    cameraModal.hide();
+                    window.location.href = data.redirect || '/';
+                } else {
+                    alert(data.message || 'Falha ao registrar o voto.');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Erro de rede ao enviar o voto.');
+            }
+        });
     </script>
     <script>
         // Validação customizada frontend

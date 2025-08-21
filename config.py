@@ -9,6 +9,8 @@ class Config:
     DATABASE_URI = os.getenv('DATABASE_URI', 'sqlite:///eleicao_cipa.db')
     WTF_CSRF_ENABLED = True
     WTF_CSRF_SECRET_KEY = os.getenv('CSRF_SECRET_KEY', 'outra_chave_secreta_aleatoria_csrf')
+    # Evita expiração inesperada de CSRF em páginas abertas por mais tempo
+    WTF_CSRF_TIME_LIMIT = None
     SQLALCHEMY_DATABASE_URI = DATABASE_URI
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     BCRYPT_LOG_ROUNDS = 12

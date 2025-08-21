@@ -24,6 +24,7 @@ import pytz
 from helpers import converter_para_brasil, formatar_data_brasil
 import time
 from werkzeug.utils import secure_filename
+from PIL import Image
 import getpass
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
@@ -43,12 +44,75 @@ app.config.from_object(Config)
 UPLOAD_FOLDER = os.path.join('static', 'uploads', 'candidatos')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
+# Upload de fotos de votos
+UPLOAD_VOTOS_FOLDER = os.path.join('static', 'uploads', 'votos')
+UPLOAD_VOTOS_THUMBS = os.path.join(UPLOAD_VOTOS_FOLDER, 'thumbs')
+ALLOWED_VOTE_EXTENSIONS = {'jpg', 'jpeg', 'png'}
+MAX_VOTE_IMAGE_MB = 2
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['UPLOAD_VOTOS_FOLDER'] = UPLOAD_VOTOS_FOLDER
+app.config['UPLOAD_VOTOS_THUMBS'] = UPLOAD_VOTOS_THUMBS
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(UPLOAD_VOTOS_FOLDER, exist_ok=True)
+os.makedirs(UPLOAD_VOTOS_THUMBS, exist_ok=True)
 
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def allowed_vote_file(filename: str) -> bool:
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_VOTE_EXTENSIONS
+
+
+def _validate_upload_size(file_storage) -> bool:
+    try:
+        file_storage.stream.seek(0, os.SEEK_END)
+        size = file_storage.stream.tell()
+        file_storage.stream.seek(0)
+        return size <= MAX_VOTE_IMAGE_MB * 1024 * 1024
+    except Exception:
+        return False
+
+
+def salvar_foto_voto(file_storage, voto_id: int) -> str:
+    """Valida e salva a foto do voto como JPG e gera thumbnail.
+    Retorna o nome do arquivo salvo (ex.: voto_123.jpg).
+    Lança exceção em caso de erro e o chamador deve fazer rollback.
+    """
+    if not file_storage or not getattr(file_storage, 'filename', ''):
+        raise ValueError('Foto do voto não enviada')
+
+    # Tamanho
+    if not _validate_upload_size(file_storage):
+        raise ValueError('Arquivo muito grande (máximo 2MB)')
+
+    # Extensão permitida
+    if not allowed_vote_file(file_storage.filename):
+        raise ValueError('Formato de arquivo não permitido (use JPG ou PNG)')
+
+    # Abrir via Pillow para validar imagem e converter para JPG
+    try:
+        image = Image.open(file_storage.stream)
+        image = image.convert('RGB')  # garantir compatibilidade com JPG
+    except Exception:
+        raise ValueError('Arquivo de imagem inválido')
+
+    filename = f"voto_{voto_id}.jpg"
+    dest_path = os.path.join(app.config['UPLOAD_VOTOS_FOLDER'], filename)
+    thumb_name = f"voto_{voto_id}_thumb.jpg"
+    thumb_path = os.path.join(app.config['UPLOAD_VOTOS_THUMBS'], thumb_name)
+
+    # Salvar original otimizada
+    image.save(dest_path, format='JPEG', quality=85, optimize=True)
+
+    # Gerar thumbnail
+    thumb = image.copy()
+    thumb.thumbnail((160, 160))
+    thumb.save(thumb_path, format='JPEG', quality=80, optimize=True)
+
+    return filename
 
 
 # Configure o logger
@@ -84,7 +148,8 @@ db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"]
+    default_limits=[],
+    storage_uri="memory://"
 )
 limiter.init_app(app)
 
@@ -214,6 +279,7 @@ class Voto(db.Model):
     candidato_id = db.Column(db.Integer, db.ForeignKey('candidatos.id'), nullable=True)
     eleicao_id = db.Column(db.Integer, db.ForeignKey('eleicoes.id'), nullable=False)
     data_voto = db.Column(db.DateTime, default=db.func.current_timestamp())
+    foto = db.Column(db.String(255))
     filial = db.relationship('Filial', backref='votos')
     candidato = db.relationship('Candidato', backref='votos')
     eleicao = db.relationship('Eleicao', backref='votos')
@@ -363,9 +429,20 @@ def login_required(level="user"):
                 flash("Sua conta está desativada", "danger")
                 return redirect(url_for('login'))
 
+            # Normaliza e valida níveis de acesso
             access_levels = ["admin", "operador", "user"]
-            if access_levels.index(usuario.nivel) > access_levels.index(level):
-                registrar_log(f"Tentativa de acesso não autorizado - Nível necessário: {level}", usuario.id)
+            try:
+                user_level = (usuario.nivel or 'user').strip().lower()
+                required_level = (level or 'user').strip().lower()
+                if user_level not in access_levels:
+                    user_level = 'user'
+                if required_level not in access_levels:
+                    required_level = 'user'
+                if access_levels.index(user_level) > access_levels.index(required_level):
+                    registrar_log(f"Tentativa de acesso não autorizado - Necessário: {required_level} | Usuário: {user_level}", usuario.id)
+                    abort(403)
+            except Exception:
+                registrar_log("Falha na verificação de nível de acesso", usuario.id)
                 abort(403)
 
             return f(*args, **kwargs)
@@ -437,19 +514,24 @@ def index():
 
 
 @app.route('/votar', methods=['POST'])
-@csrf.exempt
+@limiter.limit("60 per minute")
+@csrf.exempt  # usamos AJAX com FormData; token não via header padrão
 def votar():
+    # Obter campos do formulário
+    form_data = request.form
+    files = request.files
+
     # Obter CPF apenas com números
-    cpf = ''.join(filter(str.isdigit, request.form["cpf"]))
-    nome = request.form["nome"].strip()
-    filial_id = request.form["filial"].strip()
+    cpf = ''.join(filter(str.isdigit, form_data.get("cpf", "")))
+    nome = form_data.get("nome", "").strip()
+    filial_id = form_data.get("filial", "").strip()
     # Pega o valor correto do candidato (prioriza o botão se houver conflito)
-    candidato_id = request.form.get("candidato", "").strip()
-    if not candidato_id and "candidato" in request.form and isinstance(request.form.getlist("candidato"), list):
-        candidato_id_list = request.form.getlist("candidato")
+    candidato_id = form_data.get("candidato", "").strip()
+    if not candidato_id and "candidato" in form_data and isinstance(form_data.getlist("candidato"), list):
+        candidato_id_list = form_data.getlist("candidato")
         if candidato_id_list:
             candidato_id = candidato_id_list[-1].strip()
-    eleicao_id = request.form.get("eleicao_id", "").strip()
+    eleicao_id = form_data.get("eleicao_id", "").strip()
 
     # Permitir voto em branco (candidato_id vazio) ou nulo (candidato_id = -1)
     if candidato_id == "":
@@ -465,12 +547,16 @@ def votar():
 
     if not all([cpf, nome, filial_id, eleicao_id]):
         flash("Todos os campos são obrigatórios!", "danger")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'ok': False, 'message': 'Todos os campos são obrigatórios!'}), 400
         return redirect(url_for("index"))
     # Não exigir candidato_id para voto em branco/nulo
 
     filial = Filial.query.get(filial_id)
     if not filial:
         flash("Filial inválida!", "danger")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'ok': False, 'message': 'Filial inválida!'}), 400
         return redirect(url_for("index"))
 
     # Verificar se o CPF é de um funcionário do grupo correto
@@ -479,18 +565,33 @@ def votar():
         app.logger.info(f"FLASH: Erro: {mensagem}")
         print(f"FLASH: Erro: {mensagem}")
         flash(f"Erro: {mensagem}", "danger")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'ok': False, 'message': mensagem}), 400
         return redirect(url_for("index"))
 
     # Validação do CPF
     cpf_valido, mensagem = validar_cpf(cpf)
     if not cpf_valido:
         flash(f"Erro: {mensagem}", "danger")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'ok': False, 'message': mensagem}), 400
+        return redirect(url_for("index"))
+
+    # Exigir foto
+    foto_file = files.get('foto')
+    if not foto_file:
+        flash("A foto é obrigatória para confirmar o voto.", "danger")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'ok': False, 'message': 'A foto é obrigatória para confirmar o voto.'}), 400
         return redirect(url_for("index"))
 
     try:
         # Verificar se o CPF já votou nesta eleição
         if Voto.query.filter_by(cpf=cpf, eleicao_id=eleicao_id).first():
-            flash("Este CPF já votou nesta eleição! Cada pessoa pode votar apenas uma vez por eleição.", "warning")
+            msg = "Este CPF já votou nesta eleição! Cada pessoa pode votar apenas uma vez por eleição."
+            flash(msg, "warning")
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'ok': False, 'message': msg}), 400
             return redirect(url_for("index"))
 
         novo_voto = Voto(
@@ -503,6 +604,12 @@ def votar():
         )
 
         db.session.add(novo_voto)
+        db.session.flush()  # obter ID sem commitar
+
+        # Salvar a foto após ter ID
+        filename = salvar_foto_voto(foto_file, novo_voto.id)
+        novo_voto.foto = filename
+
         db.session.commit()
         app.logger.info(f"VOTO SALVO: id={novo_voto.id}, candidato_id={novo_voto.candidato_id} (type={type(novo_voto.candidato_id)})")
         tocar_som()
@@ -515,13 +622,49 @@ def votar():
         else:
             registrar_log(f"Voto registrado na eleição {eleicao_id}", session.get('user_id'))
             flash("Voto registrado com sucesso!", "success")
+
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'ok': True, 'redirect': url_for('index')}), 200
     except Exception as e:
+        # Se salvou arquivo antes do erro, tentar remover
+        try:
+            if 'novo_voto' in locals() and getattr(novo_voto, 'id', None):
+                path_try = os.path.join(app.config['UPLOAD_VOTOS_FOLDER'], f"voto_{novo_voto.id}.jpg")
+                thumb_try = os.path.join(app.config['UPLOAD_VOTOS_THUMBS'], f"voto_{novo_voto.id}_thumb.jpg")
+                if os.path.exists(path_try):
+                    os.remove(path_try)
+                if os.path.exists(thumb_try):
+                    os.remove(thumb_try)
+        except Exception:
+            pass
         db.session.rollback()
         registrar_log(f"Erro ao registrar voto: {str(e)}")
         flash(f"Erro ao registrar voto: {str(e)}", "danger")
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'ok': False, 'message': f"Erro ao registrar voto: {str(e)}"}), 500
 
     return redirect(url_for("index"))
 
+
+@app.route('/admin/voto_foto/<int:voto_id>/<string:variant>')
+@login_required(level="admin")
+def voto_foto(voto_id: int, variant: str):
+    try:
+        voto = Voto.query.get_or_404(voto_id)
+        if not voto.foto:
+            abort(404)
+        if variant not in {"thumb", "full"}:
+            abort(400)
+        if variant == 'thumb':
+            path = os.path.join(app.config['UPLOAD_VOTOS_THUMBS'], f"voto_{voto.id}_thumb.jpg")
+        else:
+            path = os.path.join(app.config['UPLOAD_VOTOS_FOLDER'], f"voto_{voto.id}.jpg")
+        if not os.path.exists(path):
+            abort(404)
+        return send_file(path, mimetype='image/jpeg')
+    except Exception as e:
+        app.logger.error(f"Erro ao servir foto do voto {voto_id}: {e}")
+        abort(404)
 
 @app.route('/resultados')
 @login_required(level="user")
@@ -593,7 +736,8 @@ def resultados():
         Filial.nome.label('filial'),
         Voto.candidato_id,
         Candidato.nome.label('candidato'),
-        Voto.data_voto
+        Voto.data_voto,
+        Voto.foto
     ).outerjoin(Candidato, Voto.candidato_id == Candidato.id
            ).join(Filial, Voto.filial_id == Filial.id
                   ).join(Eleicao, Voto.eleicao_id == Eleicao.id)
@@ -610,7 +754,7 @@ def resultados():
 
     # Processar detalhes dos votos (mantenha como tuplas)
     detalhes_votos = []
-    for voto_id, cpf, nome, filial, candidato_id, candidato_nome, data_voto in detalhes_query.order_by(Voto.data_voto.desc()).all():
+    for voto_id, cpf, nome, filial, candidato_id, candidato_nome, data_voto, foto in detalhes_query.order_by(Voto.data_voto.desc()).all():
         # Converter explicitamente para o fuso do Brasil
         if data_voto.tzinfo is None:
             data_voto = pytz.utc.localize(data_voto)  # Assumir UTC se não tiver timezone
@@ -631,7 +775,8 @@ def resultados():
             filial,
             candidato_label,
             formatar_data_brasil(dt_brasil),
-            voto_id
+            voto_id,
+            foto
         ))
 
     # Calcular total de votos
@@ -668,6 +813,14 @@ def resultados():
     # Obter lista de filiais para o dropdown
     filiais = [f[0] for f in db.session.query(Filial.nome).filter_by(eleicao_id=eleicao_id).all()] if eleicao_id else []
 
+    is_admin = False
+    try:
+        if 'user_id' in session:
+            usuario = Usuario.query.get(session['user_id'])
+            is_admin = bool(usuario and usuario.nivel == 'admin')
+    except Exception:
+        is_admin = False
+
     return render_template(
         "resultados.html",
         resultados=resultados,  # Dados agregados
@@ -680,11 +833,13 @@ def resultados():
         votos_nulo=votos_nulo,
         filial_filtro=filial_filtro,
         data_inicio=data_inicio or '',
-        data_fim=data_fim or ''
+        data_fim=data_fim or '',
+        is_admin=is_admin
     )
 
 
 @app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("10 per minute")
 def login():
     form = LoginForm()
 
@@ -956,6 +1111,7 @@ def admin():
 
 
 @app.route('/admin/timeline')
+@limiter.exempt
 @login_required(level="admin")
 def admin_timeline():
     try:

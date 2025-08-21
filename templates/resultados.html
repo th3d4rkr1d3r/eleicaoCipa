@@ -360,9 +360,11 @@
                     <td>
                         <div class="candidate-info">
                             {% if foto %}
-                            <img src="{{ url_for('static', filename='uploads/candidatos/' + foto) }}"
-                                 class="candidate-photo"
-                                 alt="{{ candidato }}">
+                            <a href="#" class="js-image-popup" data-img="{{ url_for('static', filename='uploads/candidatos/' + foto) }}" title="Ver foto">
+                                <img src="{{ url_for('static', filename='uploads/candidatos/' + foto) }}"
+                                     class="candidate-photo"
+                                     alt="{{ candidato }}">
+                            </a>
                             {% else %}
                             <div class="photo-placeholder">
                                 <i class="fas fa-user"></i>
@@ -408,11 +410,12 @@
                     <th>Filial</th>
                     <th>Candidato</th>
                     <th>Data/Hora</th>
+                    <th>Foto</th>
                     <th class="actions-column">Ações</th>
                 </tr>
             </thead>
             <tbody>
-                {% for cpf, nome, filial, candidato, data, voto_id in detalhes_votos %}
+                {% for cpf, nome, filial, candidato, data, voto_id, foto in detalhes_votos %}
                 <tr>
                     <td>
                         {% set cpf_limpo = cpf|replace('.', '')|replace('-', '')|replace(' ', '') %}
@@ -426,6 +429,18 @@
                     <td>{{ filial }}</td>
                     <td>{{ candidato }}</td>
                     <td>{{ data }}</td>
+                    <td>
+                        {% if is_admin and foto %}
+                            <a href="#" class="js-image-popup" data-img="{{ url_for('voto_foto', voto_id=voto_id, variant='full') }}" title="Ver foto do voto">
+                                <img src="{{ url_for('voto_foto', voto_id=voto_id, variant='thumb') }}"
+                                     alt="Foto do voto" style="width:48px;height:48px;object-fit:cover;border-radius:4px;border:1px solid #ddd;">
+                            </a>
+                        {% elif is_admin %}
+                            <span class="text-muted">—</span>
+                        {% else %}
+                            <span class="text-muted">Restrito</span>
+                        {% endif %}
+                    </td>
                     <td class="actions-column">
     <form method="POST" action="{{ url_for('anular_voto', voto_id=voto_id) }}"
           onsubmit="return confirm('Tem certeza que deseja anular este voto?')">
@@ -500,6 +515,36 @@
                 }
             });
         });
+    </script>
+    <!-- Modal para visualizar imagens -->
+    <div class="modal fade" id="imageModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+          <div class="modal-body p-0" style="background:#000;">
+            <img id="imageModalImg" src="" alt="Visualização" style="width:100%;height:auto;display:block;">
+          </div>
+          <div class="modal-footer py-2">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const modalEl = document.getElementById('imageModal');
+        const modalImg = document.getElementById('imageModalImg');
+        if (!modalEl || !modalImg) return;
+        const bsModal = new bootstrap.Modal(modalEl);
+        document.querySelectorAll('.js-image-popup').forEach(function(anchor){
+          anchor.addEventListener('click', function(e){
+            e.preventDefault();
+            const src = anchor.getAttribute('data-img');
+            if (!src) return;
+            modalImg.src = src;
+            bsModal.show();
+          });
+        });
+      });
     </script>
                 <script>
     // Configuração do CSRF para requisições AJAX
